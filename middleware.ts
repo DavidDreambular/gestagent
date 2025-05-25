@@ -1,50 +1,30 @@
-// middleware.ts
+// middleware.ts - VERSIÓN TEMPORAL SIN AUTENTICACIÓN
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
-  const supabase = createMiddlewareClient({ req, res });
   
-  // Verificar si el usuario está autenticado
-  const { data: { session } } = await supabase.auth.getSession();
+  // ⚠️ MODO TESTING: AUTENTICACIÓN DESACTIVADA TEMPORALMENTE
+  console.log('[TESTING MODE] Auth disabled - Free access to all routes');
   
-  // Rutas públicas (accesibles sin autenticación)
-  const publicRoutes = ['/auth/login', '/auth/register', '/auth/forgot-password'];
-  const isPublicRoute = publicRoutes.some(route => req.nextUrl.pathname.startsWith(route));
-  
-  // Redirigir usuarios autenticados que intentan acceder a rutas de autenticación
-  if (session && isPublicRoute) {
+  // Redirigir root a dashboard para testing directo
+  if (req.nextUrl.pathname === '/') {
     return NextResponse.redirect(new URL('/dashboard', req.url));
   }
   
-  // Redirigir usuarios no autenticados que intentan acceder a rutas protegidas
-  if (!session && !isPublicRoute && !req.nextUrl.pathname.startsWith('/api/')) {
-    return NextResponse.redirect(new URL('/auth/login', req.url));
+  // Redirigir auth routes a dashboard para evitar loops
+  if (req.nextUrl.pathname.startsWith('/auth/')) {
+    return NextResponse.redirect(new URL('/dashboard', req.url));
   }
   
-  // Verificar permisos para rutas de administración
-  if (session && req.nextUrl.pathname.startsWith('/dashboard/admin')) {
-    // Obtener el rol del usuario
-    const { data: userData, error } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', session.user.id)
-      .single();
-    
-    if (error || userData?.role !== 'admin') {
-      // Redirigir a dashboard si no es administrador
-      return NextResponse.redirect(new URL('/dashboard', req.url));
-    }
-  }
-  
+  // Permitir acceso a todas las rutas sin verificación
   return res;
 }
 
 // Configurar rutas que se evaluarán con el middleware
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico).*)'
   ],
 };

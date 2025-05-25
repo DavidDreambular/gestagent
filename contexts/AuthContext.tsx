@@ -1,20 +1,24 @@
-// contexts/AuthContext.tsx
+// contexts/AuthContext.tsx - VERSIÓN TEMPORAL CON USUARIO MOCK
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { Session, User } from '@supabase/supabase-js';
-import supabase from '../lib/supabase';
-import { Database } from '../lib/database.types';
+import { createContext, useContext, ReactNode } from 'react';
 
 // Tipo para el rol del usuario
 export type UserRole = 'admin' | 'contable' | 'gestor' | 'operador' | 'supervisor';
 
-// Tipo para el perfil de usuario extendido
-export type UserProfile = Database['public']['Tables']['users']['Row'];
+// Tipo para el perfil de usuario extendido (simplificado para testing)
+export type UserProfile = {
+  user_id: string;
+  username: string;
+  email: string;
+  role: UserRole;
+  created_at: string;
+  updated_at: string;
+};
 
 interface AuthContextType {
-  session: Session | null;
-  user: User | null;
+  session: any;
+  user: any;
   profile: UserProfile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
@@ -22,6 +26,32 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: Error | null }>;
 }
+
+// ⚠️ USUARIO MOCK PARA TESTING
+const MOCK_USER = {
+  id: '00000000-0000-0000-0000-000000000001',
+  email: 'admin@gestagent.com',
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+};
+
+const MOCK_PROFILE: UserProfile = {
+  user_id: '00000000-0000-0000-0000-000000000001',
+  username: 'admin',
+  email: 'admin@gestagent.com',
+  role: 'admin',
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+};
+
+const MOCK_SESSION = {
+  user: MOCK_USER,
+  access_token: 'mock_token_for_testing',
+  token_type: 'bearer',
+  expires_in: 3600,
+  expires_at: Math.floor(Date.now() / 1000) + 3600,
+  refresh_token: 'mock_refresh_token',
+};
 
 // Crear el contexto con un valor inicial
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -35,162 +65,35 @@ export function useAuth() {
   return context;
 }
 
-// Proveedor del contexto
+// Proveedor del contexto - VERSIÓN TEMPORAL
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  console.log('[TESTING MODE] AuthProvider iniciado con usuario mock:', MOCK_PROFILE);
 
-  // Cargar sesión inicial y configurar suscripción a cambios
-  useEffect(() => {
-    // Obtener sesión actual
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    // Configurar listener para cambios en la autenticación
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          fetchProfile(session.user.id);
-        } else {
-          setProfile(null);
-          setLoading(false);
-        }
-      }
-    );
-
-    // Limpiar suscripción
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  // Obtener perfil del usuario
-  async function fetchProfile(userId: string) {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      if (data) {
-        setProfile(data);
-      }
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Iniciar sesión
+  // Funciones mock para mantener compatibilidad
   async function signIn(email: string, password: string) {
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      return { error };
-    } catch (error) {
-      return { error: error as Error };
-    }
+    console.log('[TESTING MODE] signIn llamado - siempre exitoso');
+    return { error: null };
   }
 
-  // Registrar usuario
   async function signUp(email: string, password: string, username: string, role: UserRole) {
-    try {
-      // Solo admin puede crear nuevos administradores
-      if (role === 'admin' && profile?.role !== 'admin') {
-        return { error: new Error('No tienes permisos para crear administradores') };
-      }
-
-      // Crear usuario en Supabase Auth
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-
-      if (error) {
-        return { error };
-      }
-
-      if (data.user) {
-        // Crear perfil en la tabla users
-        const { error: profileError } = await supabase
-          .from('users')
-          .insert({
-            id: data.user.id,
-            username,
-            email,
-            role,
-          });
-
-        if (profileError) {
-          // Si hay error al crear el perfil, intentar eliminar el usuario Auth
-          await supabase.auth.admin.deleteUser(data.user.id);
-          return { error: profileError };
-        }
-      }
-
-      return { error: null };
-    } catch (error) {
-      return { error: error as Error };
-    }
+    console.log('[TESTING MODE] signUp llamado - siempre exitoso');
+    return { error: null };
   }
 
-  // Cerrar sesión
   async function signOut() {
-    await supabase.auth.signOut();
+    console.log('[TESTING MODE] signOut llamado');
   }
 
-  // Actualizar perfil
   async function updateProfile(updates: Partial<UserProfile>) {
-    try {
-      if (!user) {
-        throw new Error('No hay usuario autenticado');
-      }
-
-      const { error } = await supabase
-        .from('users')
-        .update(updates)
-        .eq('id', user.id);
-
-      if (error) {
-        throw error;
-      }
-
-      // Actualizar perfil en el estado
-      if (profile) {
-        setProfile({ ...profile, ...updates });
-      }
-
-      return { error: null };
-    } catch (error) {
-      return { error: error as Error };
-    }
+    console.log('[TESTING MODE] updateProfile llamado con:', updates);
+    return { error: null };
   }
 
   const value = {
-    session,
-    user,
-    profile,
-    loading,
+    session: MOCK_SESSION,
+    user: MOCK_USER,
+    profile: MOCK_PROFILE,
+    loading: false, // Nunca loading en modo testing
     signIn,
     signUp,
     signOut,
