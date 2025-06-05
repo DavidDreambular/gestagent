@@ -4,7 +4,8 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { translateRole } from '@/lib/utils';
-import { Bell, Search, User } from 'lucide-react';
+import { NotificationsSystem } from '@/components/dashboard/notifications-system';
+import { Search, User } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,7 +37,7 @@ export function Header() {
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
           <Input
             type="search"
-            placeholder="Buscar documentos, emisores, etc..."
+            placeholder="Buscar documentos, proveedores, clientes..."
             className="pl-9 w-full"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -45,13 +46,8 @@ export function Header() {
       </div>
 
       <div className="flex items-center space-x-4">
-        {/* Notificaciones */}
-        <Button variant="ghost" size="icon" asChild>
-          <Link href="/dashboard/notifications">
-            <Bell className="h-5 w-5" />
-            <span className="sr-only">Notificaciones</span>
-          </Link>
-        </Button>
+        {/* Sistema de Notificaciones Mejorado */}
+        <NotificationsSystem />
 
         {/* Perfil de usuario */}
         <DropdownMenu>

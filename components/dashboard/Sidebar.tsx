@@ -13,6 +13,8 @@ import {
   Bell,
   LogOut,
   Plus,
+  Building2,
+  UserCheck,
 } from 'lucide-react';
 
 export function Sidebar() {
@@ -39,6 +41,18 @@ export function Sidebar() {
       href: '/dashboard/documents/new',
       icon: Plus,
       roles: ['admin', 'contable', 'gestor', 'operador'],
+    },
+    {
+      name: 'Proveedores',
+      href: '/dashboard/suppliers',
+      icon: Building2,
+      roles: ['admin', 'contable', 'gestor', 'supervisor'],
+    },
+    {
+      name: 'Clientes',
+      href: '/dashboard/customers',
+      icon: UserCheck,
+      roles: ['admin', 'contable', 'gestor', 'supervisor'],
     },
     {
       name: 'Reportes',

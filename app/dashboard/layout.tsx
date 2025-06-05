@@ -15,14 +15,18 @@ export default function DashboardLayout({
   const { user, loading } = useAuth();
   const router = useRouter();
 
-  // Redirigir a login si no hay usuario autenticado
+  // TEMPORAL: Bypass de autenticación para testing de suppliers/customers
+  const isTestingMode = true; // TODO: Cambiar a false cuando la auth esté lista
+
+  // Redirigir a login si no hay usuario autenticado (solo si no estamos en modo testing)
   useEffect(() => {
-    if (!loading && !user) {
+    if (!isTestingMode && !loading && !user) {
       router.push('/auth/login');
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, isTestingMode]);
 
-  if (loading) {
+  // En modo testing, no mostrar loading indefinido
+  if (!isTestingMode && loading) {
     return <div className="flex items-center justify-center min-h-screen">Cargando...</div>;
   }
 
