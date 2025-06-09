@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { useRouter } from 'next/navigation';
 import { 
   FileText, 
   Upload, 
@@ -20,6 +21,7 @@ import {
   PackagePlus,
   FileDown
 } from 'lucide-react';
+import SageExportButton from '@/components/documents/SageExportButton';
 
 interface Document {
   job_id: string;
@@ -29,6 +31,7 @@ interface Document {
   receiver_name?: string;
   document_date?: string;
   upload_timestamp: string;
+  total_amount?: number;
 }
 
 export default function DocumentsPage() {
@@ -37,6 +40,7 @@ export default function DocumentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
   const [isSelectMode, setIsSelectMode] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     fetchDocuments();
@@ -73,6 +77,41 @@ export default function DocumentsPage() {
     );
   };
 
+  const handleViewDocument = (documentId: string) => {
+    router.push(`/dashboard/documents/${documentId}`);
+  };
+
+  const handleDownloadDocument = async (documentId: string) => {
+    try {
+      const response = await fetch(`/api/documents/export/${documentId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ format: 'pdf' })
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `documento_${documentId}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        const errorData = await response.json();
+        alert(`Error al descargar: ${errorData.message || 'Error desconocido'}`);
+      }
+    } catch (error) {
+      console.error('Error downloading document:', error);
+      alert('Error de conexión al descargar el documento');
+    }
+  };
+
   const handleDeleteDocument = async (documentId: string) => {
     if (!confirm('¿Estás seguro de que quieres eliminar este documento?')) {
       return;
@@ -87,7 +126,6 @@ export default function DocumentsPage() {
       });
       
       if (response.ok) {
-        // Actualizar la lista eliminando el documento
         setDocuments(documents.filter(doc => doc.job_id !== documentId));
         alert('Documento eliminado exitosamente');
       } else {
@@ -98,6 +136,10 @@ export default function DocumentsPage() {
       console.error('Error deleting document:', error);
       alert('Error de conexión al eliminar el documento');
     }
+  };
+
+  const handleNewDocument = () => {
+    router.push('/dashboard/documents/new');
   };
 
   const handleSelectDocument = (documentId: string) => {
@@ -142,7 +184,39 @@ export default function DocumentsPage() {
     if (selectedDocuments.length === 0) return;
     
     try {
-      // Simular exportación en lote
+      // Importar dinámicamente la utilidad de Excel
+      const { exportDocumentsToExcel } = await import('@/lib/utils/excel-export');
+      
+      // Preparar datos para exportación
+      const selectedDocs = selectedDocuments.map(docId => {
+        const doc = documents.find(d => d.job_id === docId);
+        return {
+          job_id: doc?.job_id || '',
+          document_type: doc?.document_type || '',
+          emitter_name: doc?.emitter_name,
+          receiver_name: doc?.receiver_name,
+          document_date: doc?.document_date,
+          total_amount: doc?.total_amount,
+          status: doc?.status || '',
+          upload_timestamp: doc?.upload_timestamp || '',
+          processed_json: null // Agregar campo requerido
+        };
+      }).filter(doc => doc.job_id); // Filtrar documentos válidos
+      
+      // Exportar a Excel con opciones avanzadas
+      await exportDocumentsToExcel(selectedDocs, {
+        includeDetails: true,
+        includeIndex: true,
+        filename: `documentos_seleccionados_${new Date().toISOString().split('T')[0]}.xlsx`
+      });
+      
+      // Mostrar mensaje de éxito
+      alert(`✅ ${selectedDocs.length} documentos exportados a Excel exitosamente`);
+      
+    } catch (error) {
+      console.error('Error en exportación masiva:', error);
+      
+      // Fallback a CSV si Excel falla
       const exportData = selectedDocuments.map(docId => {
         const doc = documents.find(d => d.job_id === docId);
         return {
@@ -150,13 +224,14 @@ export default function DocumentsPage() {
           emisor: doc?.emitter_name,
           receptor: doc?.receiver_name,
           fecha: doc?.document_date,
-          tipo: doc?.document_type
+          tipo: doc?.document_type,
+          importe: doc?.total_amount
         };
       });
       
       const csvContent = "data:text/csv;charset=utf-8," 
-        + "ID,Emisor,Receptor,Fecha,Tipo\n"
-        + exportData.map(row => `${row.id},${row.emisor},${row.receptor},${row.fecha},${row.tipo}`).join("\n");
+        + "ID,Emisor,Receptor,Fecha,Tipo,Importe\n"
+        + exportData.map(row => `${row.id},${row.emisor},${row.receptor},${row.fecha},${row.tipo},${row.importe}`).join("\n");
       
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement("a");
@@ -167,9 +242,6 @@ export default function DocumentsPage() {
       document.body.removeChild(link);
       
       alert(`${selectedDocuments.length} documentos exportados exitosamente`);
-    } catch (error) {
-      console.error('Error in bulk export:', error);
-      alert('Error al exportar documentos');
     }
   };
 
@@ -180,6 +252,13 @@ export default function DocumentsPage() {
     (doc.document_type?.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  const summaryStats = {
+    total: documents.length,
+    completed: documents.filter(d => d.status === 'completed').length,
+    processing: documents.filter(d => d.status === 'processing').length,
+    error: documents.filter(d => d.status === 'error').length
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
@@ -189,7 +268,7 @@ export default function DocumentsPage() {
             Gestión de documentos financieros digitalizados
           </p>
         </div>
-        <Button className="gap-2">
+        <Button onClick={handleNewDocument} className="gap-2">
           <Upload className="h-4 w-4" />
           Nuevo Documento
         </Button>
@@ -202,47 +281,46 @@ export default function DocumentsPage() {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{documents.length}</div>
-            <p className="text-xs text-muted-foreground">Documentos procesados</p>
+            <div className="text-2xl font-bold">{summaryStats.total}</div>
+            <p className="text-xs text-muted-foreground">
+              Documentos procesados
+            </p>
           </CardContent>
         </Card>
-        
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Completados</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <CheckSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {documents.filter(d => d.status === 'completed').length}
-            </div>
-            <p className="text-xs text-muted-foreground">Estado completado</p>
+            <div className="text-2xl font-bold">{summaryStats.completed}</div>
+            <p className="text-xs text-muted-foreground">
+              Estado completado
+            </p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Procesando</CardTitle>
-            <Building className="h-4 w-4 text-muted-foreground" />
+            <AlertCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {documents.filter(d => d.status === 'processing').length}
-            </div>
-            <p className="text-xs text-muted-foreground">En proceso</p>
+            <div className="text-2xl font-bold">{summaryStats.processing}</div>
+            <p className="text-xs text-muted-foreground">
+              En proceso
+            </p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Errores</CardTitle>
             <AlertCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {documents.filter(d => d.status === 'error').length}
-            </div>
-            <p className="text-xs text-muted-foreground">Con errores</p>
+            <div className="text-2xl font-bold">{summaryStats.error}</div>
+            <p className="text-xs text-muted-foreground">
+              Con errores
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -273,7 +351,8 @@ export default function DocumentsPage() {
                 <CheckSquare className="h-4 w-4" />
                 {isSelectMode ? 'Cancelar Selección' : 'Seleccionar Múltiple'}
               </Button>
-              <Button className="gap-2">
+                              <SageExportButton />
+              <Button onClick={handleNewDocument} className="gap-2">
                 <Upload className="h-4 w-4" />
                 Nuevo Documento
               </Button>
@@ -378,13 +457,13 @@ export default function DocumentsPage() {
                           <FileText className="h-6 w-6 text-blue-600" />
                         </div>
                         <div>
-                          <h3 className="font-medium text-lg">
+                          <h3 className="font-bold text-lg text-gray-900">
                             {doc.emitter_name || 'Emisor no disponible'}
                           </h3>
                           <div className="text-sm text-gray-500 space-y-1">
                             <div className="flex items-center gap-2">
                               <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
-                                ID: {doc.job_id}
+                                ID: {doc.job_id.substring(0, 8)}...
                               </span>
                               {doc.document_type && (
                                 <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
@@ -404,6 +483,11 @@ export default function DocumentsPage() {
                                 <span>Fecha: {new Date(doc.document_date).toLocaleDateString('es-ES')}</span>
                               </div>
                             )}
+                            {doc.total_amount && (
+                              <div className="text-sm font-medium text-green-600">
+                                Importe: €{doc.total_amount.toFixed(2)}
+                              </div>
+                            )}
                             {doc.upload_timestamp && (
                               <div className="text-xs text-gray-400">
                                 Subido: {new Date(doc.upload_timestamp).toLocaleDateString('es-ES')} - {new Date(doc.upload_timestamp).toLocaleTimeString('es-ES')}
@@ -414,11 +498,21 @@ export default function DocumentsPage() {
                       </div>
                       <div className="flex items-center space-x-3">
                         {getStatusBadge(doc.status)}
-                        <Button variant="outline" size="sm" className="gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="gap-2"
+                          onClick={() => handleViewDocument(doc.job_id)}
+                        >
                           <Eye className="h-4 w-4" />
                           <span className="hidden sm:inline">Ver</span>
                         </Button>
-                        <Button variant="outline" size="sm" className="gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="gap-2"
+                          onClick={() => handleDownloadDocument(doc.job_id)}
+                        >
                           <Download className="h-4 w-4" />
                           <span className="hidden sm:inline">Descargar</span>
                         </Button>

@@ -1,218 +1,131 @@
-// Hook personalizado para gestionar documentos con Supabase
+// Hook para gestión de documentos - Versión Mock sin Supabase
+'use client';
+
 import { useState, useEffect, useCallback } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '@/types/supabase';
-import { useAuth } from '@/contexts/AuthContext';
-import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 export interface Document {
   job_id: string;
   document_type: string;
-  file_name?: string;
-  status: 'UPLOADED' | 'PROCESSING' | 'PROCESSED' | 'ERROR' | 'DELETED';
+  raw_json?: any;
+  processed_json?: any;
   upload_timestamp: string;
   user_id: string;
-  processed_json?: any;
-  metadata?: any;
+  status: string;
   emitter_name?: string;
   receiver_name?: string;
   document_date?: string;
-  title?: string;
   version: number;
+  title?: string;
+  file_path?: string;
 }
 
-interface UseDocumentsOptions {
-  status?: string;
-  documentType?: string;
-  limit?: number;
-  offset?: number;
-  realtime?: boolean;
-}
+// Datos mock temporales
+const mockDocuments: Document[] = [
+  {
+    job_id: '1',
+    document_type: 'invoice',
+    upload_timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    user_id: 'mock-user',
+    status: 'completed',
+    emitter_name: 'Empresa ABC S.L.',
+    receiver_name: 'Cliente XYZ',
+    document_date: '2024-12-01',
+    version: 1,
+    title: 'Factura #001'
+  },
+  {
+    job_id: '2',
+    document_type: 'payslip',
+    upload_timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    user_id: 'mock-user',
+    status: 'processing',
+    emitter_name: 'Recursos Humanos',
+    receiver_name: 'Empleado DEF',
+    document_date: '2024-11-30',
+    version: 1,
+    title: 'Nómina Noviembre 2024'
+  },
+  {
+    job_id: '3',
+    document_type: 'invoice',
+    upload_timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+    user_id: 'mock-user',
+    status: 'error',
+    emitter_name: 'Proveedor GHI',
+    receiver_name: 'Mi Empresa',
+    document_date: '2024-11-28',
+    version: 1,
+    title: 'Factura #002'
+  }
+];
 
-export interface UseDocumentsReturn {
-  documents: Document[];
-  loading: boolean;
-  error: string | null;
-  totalCount: number;
-  refresh: () => Promise<void>;
-  uploadDocument: (file: File, documentType: string) => Promise<string | null>;
-  updateDocument: (jobId: string, data: Partial<Document>) => Promise<boolean>;
-  deleteDocument: (jobId: string) => Promise<boolean>;
-}
-
-export function useDocuments(options: UseDocumentsOptions = {}): UseDocumentsReturn {
-  const { 
-    status, 
-    documentType, 
-    limit = 20, 
-    offset = 0,
-    realtime = true 
-  } = options;
-  
+export function useDocuments() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [totalCount, setTotalCount] = useState(0);
-  
-  const { user } = useAuth();
-  const supabase = createClientComponentClient<Database>();
 
-  // Función para cargar documentos usando el nuevo endpoint
-  const fetchDocuments = useCallback(async () => {
+  // Cargar documentos mock
+  const loadDocuments = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-
-      console.log('[useDocuments] Cargando documentos...');
-
-      // Construir URL con parámetros
-      const params = new URLSearchParams();
-      if (status && status !== 'all') params.append('status', status);
-      if (documentType && documentType !== 'all') params.append('type', documentType);
-      params.append('limit', limit.toString());
-      params.append('offset', offset.toString());
-
-      const response = await fetch(`/api/documents/list?${params.toString()}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Error HTTP: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || 'Error al cargar documentos');
-      }
-
-      console.log(`[useDocuments] Cargados ${data.documents.length} documentos`);
-
-      setDocuments(data.documents || []);
-      setTotalCount(data.pagination.total || 0);
+      
+      // Simular carga asíncrona
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      setDocuments(mockDocuments);
+      console.log('📄 [DOCUMENTS] Documentos mock cargados:', mockDocuments.length);
+      
     } catch (err) {
-      console.error('[useDocuments] Error:', err);
-      setError(err instanceof Error ? err.message : 'Error al cargar documentos');
+      console.error('❌ [DOCUMENTS] Error cargando documentos:', err);
+      setError('Error cargando documentos');
     } finally {
       setLoading(false);
     }
-  }, [status, documentType, limit, offset]);
+  }, []);
 
-  // Configurar realtime si está habilitado
-  useEffect(() => {
-    if (realtime) {
-      const channel = supabase
-        .channel('documents-changes')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'documents'
-          },
-          (payload: RealtimePostgresChangesPayload<any>) => {
-            console.log('[useDocuments] Cambio en tiempo real:', payload);
-            // Recargar documentos cuando hay cambios
-            fetchDocuments();
-          }
-        )
-        .subscribe();
+  // Obtener documento por ID
+  const getDocument = useCallback((jobId: string) => {
+    return documents.find(doc => doc.job_id === jobId) || null;
+  }, [documents]);
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }
-  }, [realtime, fetchDocuments, supabase]);
-
-  // Cargar documentos al montar el componente o cambiar parámetros
-  useEffect(() => {
-    fetchDocuments();
-  }, [fetchDocuments]);
-
-  // Función para refrescar manualmente
-  const refresh = useCallback(async () => {
-    await fetchDocuments();
-  }, [fetchDocuments]);
-
-  // Función para subir documento
-  const uploadDocument = useCallback(async (file: File, documentType: string): Promise<string | null> => {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('documentType', documentType);
-
-      const response = await fetch('/api/documents/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error('Error al subir documento');
+  // Filtrar documentos
+  const filterDocuments = useCallback((filters: {
+    status?: string;
+    type?: string;
+    search?: string;
+  }) => {
+    return documents.filter(doc => {
+      if (filters.status && doc.status !== filters.status) return false;
+      if (filters.type && doc.document_type !== filters.type) return false;
+      if (filters.search) {
+        const search = filters.search.toLowerCase();
+        return (
+          doc.title?.toLowerCase().includes(search) ||
+          doc.emitter_name?.toLowerCase().includes(search) ||
+          doc.receiver_name?.toLowerCase().includes(search)
+        );
       }
-
-      const data = await response.json();
-      
-      // Refrescar la lista después de subir
-      await fetchDocuments();
-      
-      return data.jobId;
-    } catch (err) {
-      console.error('[useDocuments] Error al subir:', err);
-      return null;
-    }
-  }, [fetchDocuments]);
-
-  // Función para actualizar documento
-  const updateDocument = useCallback(async (jobId: string, data: Partial<Document>): Promise<boolean> => {
-    try {
-      const { error } = await supabase
-        .from('documents')
-        .update(data)
-        .eq('job_id', jobId);
-
-      if (error) throw error;
-
-      // Refrescar la lista después de actualizar
-      await fetchDocuments();
-      
       return true;
-    } catch (err) {
-      console.error('[useDocuments] Error al actualizar:', err);
-      return false;
-    }
-  }, [supabase, fetchDocuments]);
+    });
+  }, [documents]);
 
-  // Función para eliminar documento
-  const deleteDocument = useCallback(async (jobId: string): Promise<boolean> => {
-    try {
-      const { error } = await supabase
-        .from('documents')
-        .delete()
-        .eq('job_id', jobId);
-
-      if (error) throw error;
-
-      // Refrescar la lista después de eliminar
-      await fetchDocuments();
-      
-      return true;
-    } catch (err) {
-      console.error('[useDocuments] Error al eliminar:', err);
-      return false;
-    }
-  }, [supabase, fetchDocuments]);
+  // Cargar documentos al montar el hook
+  useEffect(() => {
+    loadDocuments();
+  }, [loadDocuments]);
 
   return {
     documents,
     loading,
     error,
-    totalCount,
-    refresh,
-    uploadDocument,
-    updateDocument,
-    deleteDocument,
+    loadDocuments,
+    getDocument,
+    filterDocuments,
+    // Estadísticas
+    totalDocuments: documents.length,
+    completedDocuments: documents.filter(d => d.status === 'completed').length,
+    processingDocuments: documents.filter(d => d.status === 'processing').length,
+    errorDocuments: documents.filter(d => d.status === 'error').length
   };
 }

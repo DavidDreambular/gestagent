@@ -2,7 +2,6 @@
 // Ejecutar con: npm run test:integration
 
 import { MistralOcrAdapter } from '../infrastructure/adapters/mistral.adapter';
-import { OpenRouterAdapter } from '../infrastructure/adapters/openrouter.adapter';
 import { TranslationAdapter } from '../infrastructure/adapters/translation.adapter';
 import * as dotenv from 'dotenv';
 
@@ -15,7 +14,6 @@ async function testAdapterIntegration() {
   // Verificar variables de entorno
   console.log('1. Verificando configuración:');
   console.log(`   - MISTRAL_API_KEY: ${process.env.MISTRAL_API_KEY ? '✓ Configurado' : '✗ Falta'}`);
-  console.log(`   - OPENROUTER_API_KEY: ${process.env.OPENROUTER_API_KEY ? '✓ Configurado' : '✗ Falta'}`);
   console.log(`   - SUPABASE_URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL ? '✓ Configurado' : '✗ Falta'}`);
   console.log('');
   
@@ -33,8 +31,9 @@ async function testAdapterIntegration() {
     console.log('   ✓ Traducción ejecutada correctamente');
     console.log(`   - Input: ${JSON.stringify(testData)}`);
     console.log(`   - Output: ${JSON.stringify(translated)}`);
-  } catch (error) {
-    console.error('   ✗ Error en TranslationAdapter:', error.message);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+    console.error('   ✗ Error en TranslationAdapter:', errorMessage);
   }
   console.log('');
   
@@ -44,19 +43,9 @@ async function testAdapterIntegration() {
     const ocrAdapter = new MistralOcrAdapter();
     console.log('   ✓ Adaptador creado correctamente');
     console.log('   - Listo para procesar PDFs con Mistral OCR');
-  } catch (error) {
-    console.error('   ✗ Error creando MistralOcrAdapter:', error.message);
-  }
-  console.log('');
-  
-  // Test 3: Adaptador de Validación (requiere OpenRouter API)
-  console.log('4. Probando OpenRouterAdapter:');
-  try {
-    const openRouterAdapter = new OpenRouterAdapter();
-    console.log('   ✓ Adaptador creado correctamente');
-    console.log('   - Configurado para usar Llama 3.2 90B Vision');
-  } catch (error) {
-    console.error('   ✗ Error creando OpenRouterAdapter:', error.message);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
+    console.error('   ✗ Error creando MistralOcrAdapter:', errorMessage);
   }
   console.log('');
   

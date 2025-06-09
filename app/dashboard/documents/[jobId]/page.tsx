@@ -13,6 +13,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EditableField, NestedEditableField, ItemEditableField } from '@/components/documents/EditableField';
+import { AutoSaveEditableField } from '@/components/documents/AutoSaveEditableField';
+import { useAutoSave } from '@/hooks/useAutoSave';
+import { SaveIndicator } from '@/components/ui/save-indicator';
 import Link from 'next/link';
 
 interface DocumentData {
@@ -58,6 +61,28 @@ export default function DocumentDetailPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [invoices, setInvoices] = useState<IndividualInvoice[]>([]);
   const [isEditMode, setIsEditMode] = useState(true); // Edición habilitada por defecto
+
+  // Auto-guardado
+  const { saveStatus, triggerSave, lastSaved, error: saveError } = useAutoSave({
+    delay: 3000, // 3 segundos
+    onSave: async (data) => {
+      const response = await fetch(`/api/documents/update/${jobId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          extractedData: data
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al guardar');
+      }
+    },
+    enabled: isEditMode
+  });
 
 
   // Cargar datos del documento
@@ -177,6 +202,43 @@ export default function DocumentDetailPage() {
     }
   };
 
+  // Función para manejar cambios en campos editables
+  const handleFieldChange = (field: string, newValue: any, invoiceIndex: number = selectedInvoice) => {
+    // Actualizar el estado local inmediatamente
+    const updatedInvoices = [...invoices];
+    const fieldPath = field.split('.');
+    
+    if (fieldPath.length === 1) {
+      // Campo directo de la factura
+      updatedInvoices[invoiceIndex] = {
+        ...updatedInvoices[invoiceIndex],
+        [field]: newValue
+      };
+    } else {
+      // Campo anidado (ej: supplier.name)
+      const [parentField, childField] = fieldPath;
+      const currentInvoice = updatedInvoices[invoiceIndex];
+      const parentObject = (currentInvoice as any)[parentField] || {};
+      
+      updatedInvoices[invoiceIndex] = {
+        ...currentInvoice,
+        [parentField]: {
+          ...parentObject,
+          [childField]: newValue
+        }
+      };
+    }
+    
+    setInvoices(updatedInvoices);
+    
+    // Disparar auto-guardado con los datos actualizados
+    const updatedData = Array.isArray(documentData?.extractedData) 
+      ? updatedInvoices 
+      : updatedInvoices[0]; // Si era una sola factura, mantener formato original
+    
+    triggerSave(updatedData);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -231,6 +293,12 @@ export default function DocumentDetailPage() {
           </div>
           
           <div className="flex items-center space-x-2">
+            <SaveIndicator 
+              status={saveStatus}
+              lastSaved={lastSaved}
+              error={saveError}
+              className="mr-2"
+            />
             <Badge variant="secondary" className="px-3 py-1">
               <Edit3 className="h-3 w-3 mr-1" />
               Edición directa habilitada

@@ -1,4 +1,4 @@
-import { AuthProvider } from '@/contexts/AuthContext';
+import { Providers } from '@/components/providers';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { Toaster } from '@/components/ui/toaster';
 import './globals.css';
@@ -16,12 +16,12 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body>
-        <AuthProvider>
+        <Providers>
           <NotificationProvider>
             {children}
             <Toaster />
           </NotificationProvider>
-        </AuthProvider>
+        </Providers>
       </body>
     </html>
   );

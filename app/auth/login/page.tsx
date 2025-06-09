@@ -3,8 +3,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { signIn, getSession } from 'next-auth/react';
 import Link from 'next/link';
-import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,7 +16,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { signIn } = useAuth();
   const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -25,15 +24,30 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const { error } = await signIn(email, password);
-      if (error) {
-        setError(error.message);
+      const result = await signIn('credentials', {
+        email,
+        password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        setError('Credenciales inválidas. Por favor, verifica tu email y contraseña.');
         return;
       }
-      router.push('/dashboard');
+
+      if (result?.ok) {
+        // Verificar que la sesión se creó correctamente
+        const session = await getSession();
+        if (session) {
+          router.push('/dashboard');
+          router.refresh();
+        } else {
+          setError('Error al crear la sesión. Inténtalo de nuevo.');
+        }
+      }
     } catch (err) {
-      setError('Ocurrió un error al iniciar sesión');
-      console.error(err);
+      setError('Ocurrió un error al iniciar sesión. Inténtalo de nuevo.');
+      console.error('Error en login:', err);
     } finally {
       setIsLoading(false);
     }

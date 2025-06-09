@@ -1,22 +1,18 @@
 // API Debug para diagnosticar problemas de documentos
 // /app/api/documents/debug/route.ts
+// Versión 2.0.0 - Migrado a PostgreSQL
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { PostgreSQLClient } from '@/lib/postgresql-client';
 import fs from 'fs';
 import path from 'path';
 
-// Configurar Supabase
-let supabase: any = null;
+// Inicializar cliente PostgreSQL
+let pgClient: PostgreSQLClient | null = null;
 try {
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-  }
+  pgClient = new PostgreSQLClient();
 } catch (error) {
-  console.warn('⚠️ [DEBUG] Supabase no configurado');
+  console.warn('⚠️ [DEBUG] PostgreSQL no configurado');
 }
 
 export async function GET(request: NextRequest) {
@@ -28,9 +24,10 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
       action: action,
       environment: {
-        supabase_configured: !!supabase,
-        supabase_url: process.env.NEXT_PUBLIC_SUPABASE_URL ? 'configured' : 'missing',
-        service_key: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'configured' : 'missing'
+        postgresql_configured: !!pgClient,
+        postgres_host: process.env.POSTGRES_HOST || 'localhost',
+        postgres_port: process.env.POSTGRES_PORT || '5433',
+        postgres_db: process.env.POSTGRES_DB || 'gestagent'
       }
     };
 
@@ -61,75 +58,89 @@ export async function GET(request: NextRequest) {
       }))
     };
 
-    // Verificar Supabase
-    if (supabase) {
+    // Verificar PostgreSQL
+    if (pgClient) {
       try {
         // Contar documentos totales
-        const { count: totalDocs, error: countError } = await supabase
-          .from('documents')
-          .select('*', { count: 'exact', head: true });
-
-        if (countError) {
-          debugInfo.supabase_database = {
+        const countResult = await pgClient.query('SELECT COUNT(*) as count FROM documents');
+        
+        if (countResult.error) {
+          debugInfo.postgresql_database = {
             error: 'Error contando documentos',
-            details: countError
+            details: countResult.error
           };
         } else {
-          debugInfo.supabase_database = {
+          const totalDocs = parseInt(countResult.data?.[0]?.count || '0');
+          debugInfo.postgresql_database = {
             total_documents: totalDocs,
             connection_status: 'active'
           };
 
           // Obtener últimos 5 documentos
-          const { data: recentDocs, error: docsError } = await supabase
-            .from('documents')
-            .select('job_id, document_type, status, user_id, upload_timestamp, document_date')
-            .order('upload_timestamp', { ascending: false })
-            .limit(5);
+          const recentDocsResult = await pgClient.query(`
+            SELECT job_id, document_type, status, user_id, upload_timestamp, document_date
+            FROM documents 
+            ORDER BY upload_timestamp DESC 
+            LIMIT 5
+          `);
 
-          if (docsError) {
-            debugInfo.supabase_database.recent_documents_error = docsError;
+          if (recentDocsResult.error) {
+            debugInfo.postgresql_database.recent_documents_error = recentDocsResult.error;
           } else {
-            debugInfo.supabase_database.recent_documents = recentDocs;
+            debugInfo.postgresql_database.recent_documents = recentDocsResult.data;
+          }
+
+          // Estadísticas adicionales
+          const statsResult = await pgClient.query(`
+            SELECT 
+              COUNT(*) as total,
+              COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
+              COUNT(CASE WHEN status = 'processing' THEN 1 END) as processing,
+              COUNT(CASE WHEN status = 'error' THEN 1 END) as errors
+            FROM documents
+          `);
+
+          if (statsResult.data && statsResult.data.length > 0) {
+            debugInfo.postgresql_database.statistics = statsResult.data[0];
           }
         }
-      } catch (supabaseError) {
-        debugInfo.supabase_database = {
-          error: 'Error conectando a Supabase',
-          details: supabaseError
+      } catch (postgresqlError) {
+        debugInfo.postgresql_database = {
+          error: 'Error conectando a PostgreSQL',
+          details: postgresqlError
         };
       }
     } else {
-      debugInfo.supabase_database = {
+      debugInfo.postgresql_database = {
         status: 'not_configured',
-        message: 'Supabase no está configurado'
+        message: 'PostgreSQL no está configurado'
       };
     }
 
     // Comparar discrepancias
     const mockCount = Object.keys(rawMockData).length;
-    const supabaseCount = debugInfo.supabase_database?.total_documents || 0;
+    const postgresqlCount = debugInfo.postgresql_database?.total_documents || 0;
 
     debugInfo.comparison = {
       mock_count: mockCount,
-      supabase_count: supabaseCount,
-      discrepancy: mockCount - supabaseCount,
-      sync_status: mockCount === supabaseCount ? 'synced' : 'out_of_sync'
+      postgresql_count: postgresqlCount,
+      discrepancy: mockCount - postgresqlCount,
+      sync_status: mockCount === postgresqlCount ? 'synced' : 'out_of_sync'
     };
 
     // Análisis de problemas
     debugInfo.issues_detected = [];
 
-    if (mockCount > 0 && supabaseCount === 0) {
+    if (mockCount > 0 && postgresqlCount === 0) {
       debugInfo.issues_detected.push({
-        type: 'missing_supabase_data',
-        description: 'Documentos en base temporal pero no en Supabase',
+        type: 'missing_postgresql_data',
+        description: 'Documentos en base temporal pero no en PostgreSQL',
         severity: 'high',
         solution: 'Revisar errores de inserción en logs del servidor'
       });
     }
 
-    if (mockCount === 0 && supabaseCount === 0) {
+    if (mockCount === 0 && postgresqlCount === 0) {
       debugInfo.issues_detected.push({
         type: 'no_documents',
         description: 'No hay documentos en ninguna base de datos',
@@ -138,13 +149,29 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    if (debugInfo.supabase_database?.error) {
+    if (debugInfo.postgresql_database?.error) {
       debugInfo.issues_detected.push({
-        type: 'supabase_connection_error',
-        description: 'Error conectando a Supabase',
+        type: 'postgresql_connection_error',
+        description: 'Error conectando a PostgreSQL',
         severity: 'high',
-        solution: 'Verificar configuración de variables de entorno'
+        solution: 'Verificar configuración de PostgreSQL y variables de entorno'
       });
+    }
+
+    // Verificación de tablas
+    if (pgClient) {
+      try {
+        const tablesResult = await pgClient.query(`
+          SELECT table_name 
+          FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          ORDER BY table_name
+        `);
+
+        debugInfo.postgresql_database.tables = tablesResult.data?.map(row => row.table_name) || [];
+      } catch (error) {
+        debugInfo.postgresql_database.table_check_error = error;
+      }
     }
 
     return NextResponse.json(debugInfo, { status: 200 });
@@ -163,10 +190,10 @@ export async function POST(request: NextRequest) {
     const { action } = await request.json();
 
     if (action === 'fix_sync') {
-      // Sincronizar documentos de mockDB a Supabase
-      if (!supabase) {
+      // Sincronizar documentos de mockDB a PostgreSQL
+      if (!pgClient) {
         return NextResponse.json({
-          error: 'Supabase no configurado',
+          error: 'PostgreSQL no configurado',
           timestamp: new Date().toISOString()
         }, { status: 400 });
       }
@@ -192,91 +219,112 @@ export async function POST(request: NextRequest) {
 
       for (const [jobId, docData] of Object.entries(mockDocs)) {
         try {
-          // Verificar si ya existe en Supabase
-          const { data: existing } = await supabase
-            .from('documents')
-            .select('job_id')
-            .eq('job_id', jobId)
-            .single();
+          // Verificar si ya existe en PostgreSQL
+          const existingResult = await pgClient.query(
+            'SELECT job_id FROM documents WHERE job_id = $1',
+            [jobId]
+          );
 
-          if (!existing) {
-            // Convertir fecha si es necesario
-            let documentDate = null;
-            if (Array.isArray((docData as any).extracted_data)) {
-              documentDate = (docData as any).extracted_data[0]?.issue_date || null;
-            } else {
-              documentDate = (docData as any).extracted_data?.issue_date || null;
-            }
+          if (existingResult.data && existingResult.data.length > 0) {
+            results.push({
+              job_id: jobId,
+              action: 'skipped',
+              reason: 'already_exists'
+            });
+            continue;
+          }
 
-            // Convertir formato de fecha DD/MM/YYYY a YYYY-MM-DD
-            if (documentDate && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(documentDate)) {
-              const [day, month, year] = documentDate.split('/');
-              documentDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-            }
+          // Insertar documento en PostgreSQL
+          const insertResult = await pgClient.query(`
+            INSERT INTO documents (
+              job_id, document_type, status, user_id, 
+              upload_timestamp, processed_json, raw_json
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING job_id
+          `, [
+            jobId,
+            docData.documentType || 'unknown',
+            docData.status || 'processing',
+            docData.user_id || 'system',
+            docData.uploadTimestamp || new Date().toISOString(),
+            JSON.stringify(docData.extracted_data || {}),
+            JSON.stringify(docData.raw_data || {})
+          ]);
 
-            // Crear registro en Supabase
-            const { error: insertError } = await supabase
-              .from('documents')
-              .insert({
-                job_id: jobId,
-                document_type: (docData as any).documentType || 'factura',
-                processed_json: (docData as any).extracted_data,
-                upload_timestamp: (docData as any).uploadTimestamp || new Date().toISOString(),
-                user_id: (docData as any).user_id || '00000000-0000-0000-0000-000000000000',
-                status: 'completed',
-                version: 5,
-                title: `${(docData as any).documentType || 'factura'}_${jobId}`,
-                file_path: (docData as any).document_url,
-                document_date: documentDate,
-                supplier_id: (docData as any).supplier_id,
-                customer_id: (docData as any).customer_id
-              });
-
-            if (insertError) {
-              results.push({
-                job_id: jobId,
-                status: 'error',
-                error: insertError.message
-              });
-            } else {
-              results.push({
-                job_id: jobId,
-                status: 'synced'
-              });
-            }
+          if (insertResult.error) {
+            results.push({
+              job_id: jobId,
+              action: 'error',
+              error: insertResult.error.message
+            });
           } else {
             results.push({
               job_id: jobId,
-              status: 'already_exists'
+              action: 'synced',
+              message: 'Documento sincronizado exitosamente'
             });
           }
-        } catch (error: any) {
+
+        } catch (error) {
           results.push({
             job_id: jobId,
-            status: 'error',
-            error: error.message
+            action: 'error',
+            error: error instanceof Error ? error.message : 'Error desconocido'
           });
         }
       }
 
       return NextResponse.json({
-        action: 'fix_sync',
+        success: true,
+        message: `Sincronización completada`,
         results: results,
-        synced_count: results.filter(r => r.status === 'synced').length,
-        error_count: results.filter(r => r.status === 'error').length,
-        already_exists_count: results.filter(r => r.status === 'already_exists').length,
+        summary: {
+          total_processed: results.length,
+          synced: results.filter(r => r.action === 'synced').length,
+          skipped: results.filter(r => r.action === 'skipped').length,
+          errors: results.filter(r => r.action === 'error').length
+        },
         timestamp: new Date().toISOString()
-      });
-    }
+      }, { status: 200 });
 
-    return NextResponse.json({
-      error: 'Acción no reconocida',
-      timestamp: new Date().toISOString()
-    }, { status: 400 });
+    } else if (action === 'cleanup_temp') {
+      // Limpiar archivo temporal
+      const TEMP_DB_FILE = path.join(process.cwd(), 'temp-documents.json');
+      
+      try {
+        if (fs.existsSync(TEMP_DB_FILE)) {
+          fs.unlinkSync(TEMP_DB_FILE);
+          return NextResponse.json({
+            success: true,
+            message: 'Archivo temporal eliminado',
+            timestamp: new Date().toISOString()
+          }, { status: 200 });
+        } else {
+          return NextResponse.json({
+            success: true,
+            message: 'No había archivo temporal para eliminar',
+            timestamp: new Date().toISOString()
+          }, { status: 200 });
+        }
+      } catch (error) {
+        return NextResponse.json({
+          error: 'Error eliminando archivo temporal',
+          details: error instanceof Error ? error.message : 'Error desconocido',
+          timestamp: new Date().toISOString()
+        }, { status: 500 });
+      }
+
+    } else {
+      return NextResponse.json({
+        error: 'Acción no soportada',
+        supported_actions: ['fix_sync', 'cleanup_temp'],
+        timestamp: new Date().toISOString()
+      }, { status: 400 });
+    }
 
   } catch (error: any) {
     return NextResponse.json({
-      error: 'Error ejecutando acción',
+      error: 'Error procesando acción',
       details: error.message,
       timestamp: new Date().toISOString()
     }, { status: 500 });

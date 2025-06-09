@@ -15,13 +15,14 @@ import {
   Plus,
   Building2,
   UserCheck,
+  Shield,
 } from 'lucide-react';
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { profile, signOut } = useAuth();
-  
-  const isAdmin = profile?.role === 'admin';
+  const { user, signOut } = useAuth();
+
+  const isAdmin = user?.role === 'admin';
 
   const navItems = [
     {
@@ -67,6 +68,12 @@ export function Sidebar() {
       roles: ['admin'],
     },
     {
+      name: 'Auditoría',
+      href: '/dashboard/audit',
+      icon: Shield,
+      roles: ['admin'],
+    },
+    {
       name: 'Notificaciones',
       href: '/dashboard/notifications',
       icon: Bell,
@@ -74,7 +81,7 @@ export function Sidebar() {
     },
     {
       name: 'Configuración',
-      href: '/dashboard/settings',
+      href: '/dashboard/configuration',
       icon: Settings,
       roles: ['admin'],
     },
@@ -82,7 +89,7 @@ export function Sidebar() {
 
   // Filtrar los elementos del menú según el rol del usuario
   const filteredNavItems = navItems.filter(
-    (item) => !profile?.role || item.roles.includes(profile.role)
+            (item) => !user?.role || item.roles.includes(user.role)
   );
 
   return (

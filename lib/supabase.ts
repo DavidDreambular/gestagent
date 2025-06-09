@@ -1,17 +1,9 @@
-// lib/supabase.ts
-import { createClient } from '@supabase/supabase-js';
-import { Database } from './database.types';
+// lib/supabase.ts - MIGRADO A POSTGRESQL
+// Este archivo ahora exporta el cliente PostgreSQL en lugar de Supabase
 
-// Obtener variables de entorno
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
+import pgClient from './postgresql-client';
 
-// Verificar que las variables estén definidas
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Faltan variables de entorno para Supabase. Asegúrate de definir NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en tu archivo .env.local');
-}
-
-// Crear cliente de Supabase
-const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey);
+// Exportar cliente PostgreSQL con compatibilidad de interfaz Supabase
+const supabase = pgClient;
 
 export default supabase;

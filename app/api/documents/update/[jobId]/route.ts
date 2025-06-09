@@ -1,50 +1,31 @@
 // API Route para actualizar datos de un documento específico
 // /app/api/documents/update/[jobId]/route.ts
+// Versión 2.0.0 - Migrado a PostgreSQL
 // PUT: Actualiza los datos extraídos de un documento
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import fs from 'fs';
-import path from 'path';
+import { PostgreSQLClient } from '@/lib/postgresql-client';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { AuditService } from '@/lib/services/audit.service';
 
 export const dynamic = 'force-dynamic';
 
-// Archivo para almacenamiento persistente
-const TEMP_DB_FILE = path.join(process.cwd(), 'temp-documents.json');
+// Inicializar cliente PostgreSQL
+const pgClient = new PostgreSQLClient();
 
-// Configurar Supabase
-let supabase: any = null;
-try {
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-  }
-} catch (error) {
-  console.warn('⚠️ [UPDATE] Supabase no configurado');
-}
-
-// Función para leer documentos del archivo
-function readDocumentsFromFile(): Record<string, any> {
-  try {
-    if (fs.existsSync(TEMP_DB_FILE)) {
-      const data = fs.readFileSync(TEMP_DB_FILE, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.warn('⚠️ [UPDATE] Error leyendo archivo:', error);
-  }
-  return {};
-}
-
-// Función para escribir documentos al archivo
-function writeDocumentsToFile(documents: Record<string, any>) {
-  try {
-    fs.writeFileSync(TEMP_DB_FILE, JSON.stringify(documents, null, 2));
-  } catch (error) {
-    console.error('❌ [UPDATE] Error escribiendo archivo:', error);
-  }
+// Interface para tipado del documento
+interface DocumentData {
+  job_id: string;
+  document_type: string;
+  status: string;
+  upload_timestamp: string;
+  processed_json?: any;
+  document_date?: string;
+  emitter_name?: string;
+  receiver_name?: string;
+  version?: string;
+  user_id?: string;
 }
 
 // Función para convertir fecha DD/MM/YYYY a formato ISO YYYY-MM-DD
@@ -75,10 +56,19 @@ function convertToISODate(dateString: string | null | undefined): string | null 
 // Handler PUT - Actualizar datos de un documento
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  context: { params: { jobId: string } }
 ) {
   try {
-    const { jobId } = params;
+    // Verificar autenticación
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json(
+        { error: 'No autorizado' },
+        { status: 401 }
+      );
+    }
+
+    const { jobId } = context.params;
     const body = await request.json();
     const { extractedData, updateType = 'complete' } = body;
 
@@ -98,69 +88,102 @@ export async function PUT(
       );
     }
 
-    // 1. Actualizar en base temporal
-    const tempDocuments = readDocumentsFromFile();
+    // 1. Verificar que el documento existe en PostgreSQL
+    const fetchQuery = `
+      SELECT * FROM documents 
+      WHERE job_id = $1
+    `;
     
-    if (!tempDocuments[jobId]) {
+    const fetchResult = await pgClient.query<DocumentData>(fetchQuery, [jobId]);
+
+    if (fetchResult.error || !fetchResult.data || fetchResult.data.length === 0) {
+      console.log(`❌ [UPDATE] Documento no encontrado en PostgreSQL: ${jobId}`);
       return NextResponse.json(
-        { error: 'Documento no encontrado en base temporal' },
+        { error: 'Documento no encontrado' },
         { status: 404 }
       );
     }
 
-    // Actualizar datos extraídos
-    tempDocuments[jobId].extracted_data = extractedData;
-    tempDocuments[jobId].last_updated = new Date().toISOString();
-    tempDocuments[jobId].updated_by = 'user_edit'; // Marcar como editado por usuario
+    const existingDocument = fetchResult.data[0];
 
-    // Guardar en archivo temporal
-    writeDocumentsToFile(tempDocuments);
+    // 2. Extraer campos para actualización denormalizada
+    let documentDate = null;
+    let emitterName = null;
+    let receiverName = null;
 
-    console.log(`✅ [UPDATE] Documento actualizado en base temporal`);
-
-    // 2. Actualizar en Supabase (si está configurado)
-    if (supabase) {
-      try {
-        // Extraer campos para actualización denormalizada
-        let documentDate = null;
-        if (Array.isArray(extractedData)) {
-          documentDate = convertToISODate(extractedData[0]?.issue_date) || null;
-        } else {
-          documentDate = convertToISODate(extractedData?.issue_date) || null;
-        }
-
-        // Actualizar registro en Supabase
-        const { error: updateError } = await supabase
-          .from('documents')
-          .update({
-            processed_json: extractedData,
-            document_date: documentDate,
-            updated_at: new Date().toISOString(),
-            version: tempDocuments[jobId].version ? tempDocuments[jobId].version + 1 : 6
-          })
-          .eq('job_id', jobId);
-
-        if (updateError) {
-          console.error('❌ [UPDATE] Error actualizando Supabase:', updateError);
-          // No fallar si Supabase falla, al menos tenemos la base temporal actualizada
-        } else {
-          console.log(`✅ [UPDATE] Documento actualizado en Supabase`);
-        }
-      } catch (supabaseError) {
-        console.error('❌ [UPDATE] Error conectando a Supabase:', supabaseError);
-      }
+    if (Array.isArray(extractedData)) {
+      const firstInvoice = extractedData[0];
+      documentDate = convertToISODate(firstInvoice?.issue_date) || null;
+      emitterName = firstInvoice?.emitter?.name || null;
+      receiverName = firstInvoice?.receiver?.name || null;
+    } else {
+      documentDate = convertToISODate(extractedData?.issue_date) || null;
+      emitterName = extractedData?.emitter?.name || null;
+      receiverName = extractedData?.receiver?.name || null;
     }
 
-    // 3. Crear audit log si es necesario
-    const auditLog = {
-      action: 'document_updated',
-      job_id: jobId,
-      update_type: updateType,
-      timestamp: new Date().toISOString(),
-      changes_summary: updateType === 'field' ? 'Campo individual actualizado' : 'Documento completo actualizado'
-    };
+    // 3. Actualizar documento en PostgreSQL
+    const updateQuery = `
+      UPDATE documents SET
+        processed_json = $2,
+        document_date = $3,
+        emitter_name = $4,
+        receiver_name = $5,
+        status = 'validated',
+        version = (COALESCE(CAST(version AS INTEGER), 1) + 1)::TEXT,
+        upload_timestamp = NOW()
+      WHERE job_id = $1
+      RETURNING *
+    `;
 
-    console.log(`📝 [UPDATE] Audit log:`, auditLog);
+    const updateResult = await pgClient.query<DocumentData>(updateQuery, [
+      jobId,
+      JSON.stringify(extractedData),
+      documentDate,
+      emitterName,
+      receiverName
+    ]);
+
+    if (updateResult.error || !updateResult.data || updateResult.data.length === 0) {
+      console.error('❌ [UPDATE] Error actualizando PostgreSQL:', updateResult.error);
+      return NextResponse.json(
+        { 
+          error: 'Error actualizando documento',
+          details: updateResult.error?.message || 'Unknown error'
+        },
+        { status: 500 }
+      );
+    }
+
+    const updatedDocument = updateResult.data[0];
+
+    console.log(`✅ [UPDATE] Documento actualizado en PostgreSQL: ${jobId}`);
+
+    // 4. Crear log de auditoría
+    try {
+      await AuditService.logDocumentUpdated(
+        jobId,
+        session.user?.id || 'unknown',
+        {
+          version: existingDocument.version,
+          processed_json: existingDocument.processed_json,
+          document_date: existingDocument.document_date,
+          emitter_name: existingDocument.emitter_name,
+          receiver_name: existingDocument.receiver_name
+        },
+        {
+          updateType,
+          version: updatedDocument.version,
+          processed_json: updatedDocument.processed_json,
+          document_date: updatedDocument.document_date,
+          emitter_name: updatedDocument.emitter_name,
+          receiver_name: updatedDocument.receiver_name
+        }
+      );
+    } catch (auditError) {
+      console.warn('⚠️ [UPDATE] Error creando audit log:', auditError);
+      // No fallar si auditoría falla
+    }
 
     return NextResponse.json({
       success: true,
@@ -168,7 +191,15 @@ export async function PUT(
       jobId: jobId,
       updateType: updateType,
       timestamp: new Date().toISOString(),
-      auditLog: auditLog
+      document: {
+        job_id: updatedDocument.job_id,
+        document_type: updatedDocument.document_type,
+        status: updatedDocument.status,
+        version: updatedDocument.version,
+        emitter_name: updatedDocument.emitter_name,
+        receiver_name: updatedDocument.receiver_name,
+        document_date: updatedDocument.document_date
+      }
     }, { status: 200 });
 
   } catch (error) {
@@ -186,14 +217,23 @@ export async function PUT(
 // Handler PATCH - Actualización parcial de campos específicos
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  context: { params: { jobId: string } }
 ) {
   try {
-    const { jobId } = params;
-    const body = await request.json();
-    const { field, value, invoiceIndex = 0 } = body;
+    // Verificar autenticación
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json(
+        { error: 'No autorizado' },
+        { status: 401 }
+      );
+    }
 
-    console.log(`🔄 [PATCH] Actualizando campo ${field} del documento ${jobId} - Invoice ${invoiceIndex}`);
+    const { jobId } = context.params;
+    const body = await request.json();
+    const { field, value, updateType = 'partial' } = body;
+
+    console.log(`🔄 [PATCH] Actualizando campo ${field} del documento ${jobId}`);
 
     if (!jobId || !field) {
       return NextResponse.json(
@@ -202,83 +242,97 @@ export async function PATCH(
       );
     }
 
-    // Leer documento actual
-    const tempDocuments = readDocumentsFromFile();
+    // Verificar que el documento existe
+    const fetchQuery = `
+      SELECT * FROM documents 
+      WHERE job_id = $1
+    `;
     
-    if (!tempDocuments[jobId]) {
+    const fetchResult = await pgClient.query<DocumentData>(fetchQuery, [jobId]);
+
+    if (fetchResult.error || !fetchResult.data || fetchResult.data.length === 0) {
       return NextResponse.json(
         { error: 'Documento no encontrado' },
         { status: 404 }
       );
     }
 
-    let extractedData = tempDocuments[jobId].extracted_data;
+    // Construir la consulta de actualización dinámicamente
+    let updateQuery = '';
+    let queryParams: any[] = [jobId];
 
-    // Actualizar campo específico
-    if (Array.isArray(extractedData)) {
-      // Múltiples facturas
-      if (extractedData[invoiceIndex]) {
-        // Usar notación de punto para campos anidados (ej: "supplier.name")
-        if (field.includes('.')) {
-          const fieldParts = field.split('.');
-          let current = extractedData[invoiceIndex];
-          for (let i = 0; i < fieldParts.length - 1; i++) {
-            if (!current[fieldParts[i]]) current[fieldParts[i]] = {};
-            current = current[fieldParts[i]];
-          }
-          current[fieldParts[fieldParts.length - 1]] = value;
-        } else {
-          extractedData[invoiceIndex][field] = value;
-        }
-      }
-    } else {
-      // Factura única
-      if (field.includes('.')) {
-        const fieldParts = field.split('.');
-        let current = extractedData;
-        for (let i = 0; i < fieldParts.length - 1; i++) {
-          if (!current[fieldParts[i]]) current[fieldParts[i]] = {};
-          current = current[fieldParts[i]];
-        }
-        current[fieldParts[fieldParts.length - 1]] = value;
-      } else {
-        extractedData[field] = value;
-      }
+    switch (field) {
+      case 'status':
+        updateQuery = `
+          UPDATE documents SET
+            status = $2,
+            upload_timestamp = NOW()
+          WHERE job_id = $1
+          RETURNING *
+        `;
+        queryParams.push(value);
+        break;
+      
+      case 'document_date':
+        updateQuery = `
+          UPDATE documents SET
+            document_date = $2,
+            upload_timestamp = NOW()
+          WHERE job_id = $1
+          RETURNING *
+        `;
+        queryParams.push(convertToISODate(value));
+        break;
+      
+      case 'emitter_name':
+      case 'receiver_name':
+        updateQuery = `
+          UPDATE documents SET
+            ${field} = $2,
+            upload_timestamp = NOW()
+          WHERE job_id = $1
+          RETURNING *
+        `;
+        queryParams.push(value);
+        break;
+      
+      default:
+        return NextResponse.json(
+          { error: 'Campo no actualizable' },
+          { status: 400 }
+        );
     }
 
-    // Actualizar documento
-    tempDocuments[jobId].extracted_data = extractedData;
-    tempDocuments[jobId].last_updated = new Date().toISOString();
-    tempDocuments[jobId].updated_by = 'user_edit';
+    const updateResult = await pgClient.query<DocumentData>(updateQuery, queryParams);
 
-    writeDocumentsToFile(tempDocuments);
-
-    // Actualizar en Supabase si está disponible
-    if (supabase) {
-      try {
-        const { error: updateError } = await supabase
-          .from('documents')
-          .update({
-            processed_json: extractedData,
-            updated_at: new Date().toISOString()
-          })
-          .eq('job_id', jobId);
-
-        if (updateError) {
-          console.warn('⚠️ [PATCH] Error actualizando Supabase:', updateError);
-        }
-      } catch (supabaseError) {
-        console.warn('⚠️ [PATCH] Error conectando a Supabase:', supabaseError);
-      }
+    if (updateResult.error || !updateResult.data || updateResult.data.length === 0) {
+      return NextResponse.json(
+        { 
+          error: 'Error actualizando documento',
+          details: updateResult.error?.message || 'Unknown error'
+        },
+        { status: 500 }
+      );
     }
+
+    const updatedDocument = updateResult.data[0];
+
+    console.log(`✅ [PATCH] Campo ${field} actualizado en documento ${jobId}`);
 
     return NextResponse.json({
       success: true,
       message: `Campo ${field} actualizado correctamente`,
+      jobId: jobId,
       field: field,
       value: value,
-      invoiceIndex: invoiceIndex,
-      timestamp: new Date().toISOString()
+      updateType: updateType,
+      timestamp: new Date().toISOString(),
+      document: {
+        job_id: updatedDocument.job_id,
+        document_type: updatedDocument.document_type,
+        status: updatedDocument.status,
+        version: updatedDocument.version
+      }
     }, { status: 200 });
 
   } catch (error) {

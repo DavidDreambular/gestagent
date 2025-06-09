@@ -12,7 +12,7 @@ GestAgent V3.1 ha completado exitosamente todas las fases de desarrollo y testin
 
 ### 🎯 **OBJETIVO ALCANZADO**
 > Sistema integral de digitalización de documentos financieros para gestorías completamente operativo con:
-> - Automatización PDF→Mistral OCR→GPT-4o→Supabase→NextJS UI
+> - Automatización PDF→Mistral Document Understanding→Supabase→NextJS UI
 > - Dashboard completo con métricas en tiempo real
 > - Gestión integral de usuarios, proveedores y clientes
 > - Centro de notificaciones avanzado
@@ -96,7 +96,7 @@ GestAgent V3.1 ha completado exitosamente todas las fases de desarrollo y testin
 
 ### **Integración IA**
 - ✅ **Mistral OCR**: Extracción de datos PDF
-- ✅ **OpenAI GPT-4o**: Validación y estructuración
+- ✅ **Mistral Document Understanding**: Procesamiento y estructuración automática
 - ✅ **Flujo automatizado**: PDF→OCR→Validación→Storage
 
 ---
@@ -183,7 +183,7 @@ NEXTAUTH_URL=https://your-production-domain.com
 - **Arquitectura**: Diseño DDD y microservicios
 - **Frontend**: NextJS + TypeScript + TailwindCSS
 - **Backend**: Supabase + API Routes
-- **AI/ML**: Mistral OCR + GPT-4o
+- **AI/ML**: Mistral Document Understanding
 - **QA**: MCP Web-Eval-Agent + Testing manual
 
 ### **Documentación Completa**

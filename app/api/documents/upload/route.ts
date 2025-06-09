@@ -1,15 +1,17 @@
-// API Route para upload de documentos PDF - MODO MISTRAL DOCUMENT UNDERSTANDING
+// API Route para upload de documentos PDF - MIGRADO A POSTGRESQL
 // /app/api/documents/upload/route.ts
-// FLUJO CORRECTO: PDF → Supabase Storage → Mistral Document Understanding → Supabase DB
+// FLUJO CORRECTO: PDF → Storage Local → Mistral Document Understanding → PostgreSQL
 
 import { NextRequest, NextResponse } from 'next/server';
-import { mistralDocumentProcessor } from '@/services/document-processor-mistral-correct';
-import { addDocumentToMockDB } from '@/lib/mock-db';
-import { createClient } from '@supabase/supabase-js';
+import { EnhancedMistralProcessor } from '@/services/document-processor-mistral-enhanced';
+import pgClient from '@/lib/postgresql-client';
 import { v4 as uuidv4 } from 'uuid';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { suppliersCustomersManager } from '@/services/suppliers-customers-manager';
+import { writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import AuditService, { AuditAction, AuditEntityType } from '@/services/audit.service';
 
 // Función para convertir fecha DD/MM/YYYY a formato ISO YYYY-MM-DD
 function convertToISODate(dateString: string | null | undefined): string | null {
@@ -44,39 +46,51 @@ function convertToISODate(dateString: string | null | undefined): string | null 
   }
 }
 
-// Configurar Supabase (opcional para desarrollo)
-let supabase: any = null;
-try {
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-  }
-} catch (error) {
-  console.warn('⚠️ [API] Supabase no configurado, usando base temporal');
-}
-
 // Configurar el límite de tamaño para archivos grandes
 export const maxDuration = 180; // 3 minutos para procesamiento completo
 export const dynamic = 'force-dynamic';
+
+// Función para guardar archivo localmente
+function saveFileLocally(buffer: Buffer, fileName: string): string {
+  try {
+    // Crear directorio de uploads si no existe
+    const uploadsDir = join(process.cwd(), 'uploads');
+    mkdirSync(uploadsDir, { recursive: true });
+    
+    // Generar nombre único
+    const timestamp = Date.now();
+    const safeFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const uniqueFileName = `${timestamp}_${safeFileName}`;
+    const filePath = join(uploadsDir, uniqueFileName);
+    
+    // Guardar archivo
+    writeFileSync(filePath, buffer);
+    console.log(`💾 [API] Archivo guardado localmente: ${filePath}`);
+    
+    return `/uploads/${uniqueFileName}`;
+  } catch (error) {
+    console.error('❌ [API] Error guardando archivo localmente:', error);
+    throw error;
+  }
+}
 
 // Handler GET - Información del endpoint
 export async function GET() {
   return NextResponse.json({
     message: "GestAgent - Upload & Processing API",
-    version: "5.0.0 MISTRAL DOCUMENT UNDERSTANDING",
-    description: "Procesa documentos PDF usando Mistral Document Understanding API",
-    flow: "PDF → Supabase Storage → Mistral Document Understanding → JSON Estructurado → Supabase DB",
+    version: "6.0.0 POSTGRESQL MIGRATION",
+    description: "Procesa documentos PDF usando Mistral Document Understanding API con PostgreSQL",
+    flow: "PDF → Storage Local → Mistral Document Understanding → JSON Estructurado → PostgreSQL",
     model: "mistral-small-latest",
     provider: "Mistral AI",
-    mode: "PRODUCTION_MISTRAL_DOCUMENT_UNDERSTANDING",
+    mode: "PRODUCTION_POSTGRESQL",
     features: [
       "✅ Procesamiento directo de PDF",
       "✅ Document Understanding nativo",
       "✅ Extracción estructurada en JSON",
       "✅ Soporte multilingüe (ES/CAT)",
-      "✅ Storage en Supabase",
+      "✅ Storage local",
+      "✅ PostgreSQL como base de datos",
       "✅ Logs de auditoría completos"
     ],
     endpoints: {
@@ -89,21 +103,21 @@ export async function GET() {
       timeout: "180 segundos"
     },
     storage: {
-      supabase_configured: !!supabase,
-      fallback_storage: "memoria temporal"
+      database: "PostgreSQL",
+      files: "Local Storage"
     }
   });
 }
 
 // Handler POST - Procesar documento
 export async function POST(request: NextRequest) {
-  console.log('\n🚀 [API] Iniciando procesamiento de documento');
+  console.log('\n🚀 [API] Iniciando procesamiento de documento con PostgreSQL');
   
   try {
     // Verificar autenticación (opcional para desarrollo)
     let userId = '00000000-0000-0000-0000-000000000000'; // UUID válido para desarrollo
     try {
-    const session = await getServerSession(authOptions);
+      const session = await getServerSession(authOptions);
       userId = session?.user?.id || '00000000-0000-0000-0000-000000000000';
     } catch (authError) {
       console.warn('⚠️ [API] Sin autenticación, usando usuario de desarrollo con UUID válido');
@@ -152,17 +166,17 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const pdfBuffer = Buffer.from(arrayBuffer);
     
-    // Generar job ID único - usando UUID válido para Supabase
+    // Generar job ID único - usando UUID válido para PostgreSQL
     const jobId = uuidv4();
     
     console.log(`🔄 [API] Iniciando procesamiento con Job ID: ${jobId}`);
 
-    // Procesar con Mistral Document Understanding
-    const result = await mistralDocumentProcessor.processDocument(
-      pdfBuffer,
-      documentType,
-      jobId
-    );
+    // Guardar archivo localmente
+    const filePath = saveFileLocally(pdfBuffer, file.name);
+
+    // Procesar con Enhanced Mistral Processor (optimizado para múltiples facturas)
+    const enhancedProcessor = new EnhancedMistralProcessor();
+    const result = await enhancedProcessor.processDocument(pdfBuffer, jobId);
 
     if (!result.success) {
       console.error('❌ [API] Error en procesamiento:', result.extracted_data);
@@ -176,6 +190,23 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`✅ [API] Procesamiento exitoso en ${result.processing_metadata.total_time_ms}ms`);
+
+    // AUDITORÍA: Registrar inicio de procesamiento
+    await AuditService.logFromRequest(request, {
+      userId,
+      action: AuditAction.UPLOAD,
+      entityType: AuditEntityType.DOCUMENTS,
+      entityId: jobId,
+      newValues: {
+        fileName: file.name,
+        fileSize: file.size,
+        documentType: documentType
+      },
+      metadata: {
+        processingTimeMs: result.processing_metadata.total_time_ms,
+        source: 'upload_api'
+      }
+    });
 
     // NUEVO: Procesar relaciones comerciales (proveedores/clientes)
     let supplier_id: string | undefined;
@@ -206,10 +237,10 @@ export async function POST(request: NextRequest) {
     try {
       // Si es un array de facturas, sumar totales
       if (Array.isArray(result.extracted_data)) {
-        total_amount = result.extracted_data.reduce((sum, invoice) => {
+        total_amount = result.extracted_data.reduce((sum: number, invoice: any) => {
           return sum + (invoice.totals?.total || 0);
         }, 0);
-        tax_amount = result.extracted_data.reduce((sum, invoice) => {
+        tax_amount = result.extracted_data.reduce((sum: number, invoice: any) => {
           return sum + (invoice.totals?.total_tax_amount || 0);
         }, 0);
         document_date = convertToISODate(result.extracted_data[0]?.issue_date || result.extracted_data[0]?.invoice_date) || undefined;
@@ -223,137 +254,112 @@ export async function POST(request: NextRequest) {
       console.warn('⚠️ [API] Error extrayendo totales:', totalsError);
     }
 
-    // Guardar en base de datos temporal (siempre)
+    // Verificar/Crear usuario en PostgreSQL si no existe
     try {
-      addDocumentToMockDB(result.jobId, {
-        documentType,
-        document_url: result.document_url,
-        extracted_data: result.extracted_data,
-        processing_metadata: result.processing_metadata,
-        user_id: userId,
-        uploadTimestamp: new Date().toISOString(),
-        // Nuevos campos de relaciones
-        supplier_id,
-        customer_id,
-        relations_operations: relationsOperations
-      });
-      console.log(`✅ [API] Guardado en base temporal con Job ID: ${result.jobId}`);
-    } catch (mockDbError) {
-      console.error('❌ [API] Error guardando en base temporal:', mockDbError);
+      const { data: existingUser } = await pgClient.query(
+        'SELECT user_id FROM users WHERE user_id = $1',
+        [userId]
+      );
+
+      if (!existingUser || existingUser.length === 0) {
+        console.log('🔄 [API] Creando usuario en PostgreSQL...');
+        const { error: userError } = await pgClient.query(
+          'INSERT INTO users (user_id, username, email, role, created_at) VALUES ($1, $2, $3, $4, $5)',
+          [userId, 'dev_user', 'dev@gestagent.local', 'admin', new Date().toISOString()]
+        );
+
+        if (userError) {
+          console.warn('⚠️ [API] Error creando usuario:', userError);
+        } else {
+          console.log('✅ [API] Usuario creado exitosamente');
+        }
+      }
+    } catch (userCheckError) {
+      console.warn('⚠️ [API] Error verificando usuario:', userCheckError);
     }
 
-    // Guardar en Supabase (si está configurado)
-    if (supabase) {
-      try {
-        // Verificar/Crear usuario dummy si no existe
-        const { data: existingUser } = await supabase
-          .from('users')
-          .select('user_id')
-          .eq('user_id', userId)
-          .single();
+    // Insertar documento en PostgreSQL
+    try {
+             const documentData = {
+         job_id: result.jobId,
+         document_type: documentType,
+         raw_json: {}, // No aplicable para Document Understanding
+         processed_json: result.extracted_data,
+         upload_timestamp: new Date().toISOString(),
+         user_id: userId,
+         status: 'completed',
+         version: 6,
+         
+         // Campos denormalizados
+         emitter_name: Array.isArray(result.extracted_data) 
+           ? result.extracted_data[0]?.supplier?.name || undefined
+           : result.extracted_data?.supplier?.name || undefined,
+         receiver_name: Array.isArray(result.extracted_data)
+           ? result.extracted_data[0]?.customer?.name || undefined  
+           : result.extracted_data?.customer?.name || undefined,
+         document_date: document_date || undefined,
+         
+         title: `${documentType}_${result.jobId}`,
+         file_path: filePath
+       };
 
-        if (!existingUser) {
-          console.log('🔄 [API] Creando usuario dummy en Supabase...');
-          const { error: userError } = await supabase
-            .from('users')
-            .insert({
-              user_id: userId,
-              username: 'dev_user',
-              email: 'dev@gestagent.local',
-              role: 'admin',
-              created_at: new Date().toISOString()
-            });
+      const { data: dbData, error: dbError } = await pgClient.insertDocument(documentData);
 
-          if (userError) {
-            console.warn('⚠️ [API] Error creando usuario dummy:', userError);
-            // Intentar con rol básico si admin falla
-            const { error: userError2 } = await supabase
-              .from('users')
-              .insert({
-                user_id: userId,
-                username: 'dev_user',
-                email: 'dev@gestagent.local',
-                role: 'user',
-                created_at: new Date().toISOString()
-              });
-            
-            if (userError2) {
-              console.error('❌ [API] Error creando usuario con rol básico:', userError2);
-            } else {
-              console.log('✅ [API] Usuario creado con rol básico');
-            }
-          } else {
-            console.log('✅ [API] Usuario dummy creado exitosamente');
+      if (dbError) {
+        console.error('❌ [API] Error guardando en PostgreSQL:', dbError);
+        return NextResponse.json({
+          success: false,
+          error: 'Error guardando en base de datos',
+          error_code: 'DATABASE_ERROR',
+          details: dbError.message
+        }, { status: 500 });
+      } else {
+        console.log(`✅ [API] Guardado en PostgreSQL exitosamente`);
+        
+        // AUDITORÍA: Registrar creación exitosa del documento
+        await AuditService.logDocumentCreate(
+          userId,
+          result.jobId,
+          {
+            document_type: documentType,
+            title: `${documentType}_${result.jobId}`,
+            file_path: filePath,
+            emitter_name: Array.isArray(result.extracted_data) 
+              ? result.extracted_data[0]?.supplier?.name || undefined
+              : result.extracted_data?.supplier?.name || undefined,
+            receiver_name: Array.isArray(result.extracted_data)
+              ? result.extracted_data[0]?.customer?.name || undefined  
+              : result.extracted_data?.customer?.name || undefined,
+            total_amount,
+            tax_amount
+          },
+          {
+            req: request,
+            requestId: request.headers.get('x-request-id') || undefined
           }
-        }
-
-        // Insertar documento con referencias a proveedores/clientes
-        const documentData = {
-          job_id: result.jobId,
-          document_type: documentType,
-          raw_json: {}, // No aplicable para Document Understanding
-          processed_json: result.extracted_data,
-          upload_timestamp: new Date().toISOString(),
-          user_id: userId,
-          status: 'completed',
-          version: 5,
-          
-          // Referencias a suppliers y customers
-          supplier_id: supplier_id || null,
-          customer_id: customer_id || null,
-          
-          // Campos denormalizados (mantenemos para compatibilidad)
-          emitter_name: Array.isArray(result.extracted_data) 
-            ? result.extracted_data[0]?.supplier?.name || null
-            : result.extracted_data?.supplier?.name || null,
-          receiver_name: Array.isArray(result.extracted_data)
-            ? result.extracted_data[0]?.customer?.name || null  
-            : result.extracted_data?.customer?.name || null,
-          document_date: document_date || null,
-          total_amount: total_amount || null,
-          tax_amount: tax_amount || null,
-          
-          title: `${documentType}_${result.jobId}`,
-          file_path: result.document_url || null,
-          processing_metadata: {
-            ...result.processing_metadata,
-            relations_operations: relationsOperations
-          }
-        };
-
-        const { data: dbData, error: dbError } = await supabase
-          .from('documents')
-          .insert(documentData)
-          .select()
-          .single();
-
-        if (dbError) {
-          console.error('❌ [API] Error guardando en Supabase:', dbError);
-          // No retornar error, solo log - el procesamiento fue exitoso
-        } else {
-          console.log(`✅ [API] Guardado en Supabase con ID: ${dbData?.id}`);
-          console.log(`🏢 [API] Referencias: Proveedor=${supplier_id}, Cliente=${customer_id}`);
-        }
-      } catch (dbError) {
-        console.error('❌ [API] Error de conexión a Supabase:', dbError);
-        // Continuar sin error - el procesamiento fue exitoso
+        );
       }
-    } else {
-      console.log('ℹ️ [API] Supabase no configurado, usando solo base temporal');
+    } catch (dbError) {
+      console.error('❌ [API] Error de conexión a PostgreSQL:', dbError);
+      return NextResponse.json({
+        success: false,
+        error: 'Error de conexión a base de datos',
+        error_code: 'DATABASE_CONNECTION_ERROR'
+      }, { status: 500 });
     }
 
     // Respuesta exitosa
     return NextResponse.json({
       success: true,
       jobId: result.jobId,
-      document_url: result.document_url,
+      document_url: filePath,
       extracted_data: result.extracted_data,
       processing_metadata: {
         ...result.processing_metadata,
-        api_version: '5.0.0',
+        api_version: '6.0.0',
         timestamp: new Date().toISOString(),
         user_id: userId,
-        storage_method: supabase ? 'supabase_and_temporal' : 'temporal_only',
+        storage_method: 'postgresql_local',
         // Información de relaciones comerciales
         relations: {
           supplier_id,

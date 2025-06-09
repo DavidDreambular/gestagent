@@ -1,0 +1,44 @@
+{
+  "timestamp": "2025-06-07T17:45:48.153Z",
+  "total_apis_migrated": 5,
+  "apis_status": {
+    "app/api/dashboard/stats/route.ts": {
+      "exists": true,
+      "uses_supabase": false,
+      "uses_postgresql": true,
+      "migrated": true
+    },
+    "app/api/documents/list/route.ts": {
+      "exists": true,
+      "uses_supabase": false,
+      "uses_postgresql": true,
+      "migrated": true
+    },
+    "app/api/documents/upload/route.ts": {
+      "exists": true,
+      "uses_supabase": false,
+      "uses_postgresql": true,
+      "migrated": true
+    },
+    "app/api/customers/route.ts": {
+      "exists": true,
+      "uses_supabase": false,
+      "uses_postgresql": true,
+      "migrated": true
+    },
+    "app/api/suppliers/route.ts": {
+      "exists": true,
+      "uses_supabase": false,
+      "uses_postgresql": true,
+      "migrated": true
+    }
+  },
+  "critical_apis": [
+    "app/api/dashboard/stats/route.ts",
+    "app/api/documents/list/route.ts",
+    "app/api/documents/upload/route.ts",
+    "app/api/customers/route.ts",
+    "app/api/suppliers/route.ts"
+  ],
+  "remaining_apis": []
+}

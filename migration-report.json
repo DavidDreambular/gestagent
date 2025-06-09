@@ -1,0 +1,224 @@
+{
+  "timestamp": "2025-06-06T13:43:44.977Z",
+  "total_files_with_supabase": 30,
+  "migration_status": "NEEDS_MIGRATION",
+  "files_to_migrate": [
+    {
+      "path": "lib\\auth.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 136
+    },
+    {
+      "path": "lib\\supabase.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 17
+    },
+    {
+      "path": "services\\audit.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 283
+    },
+    {
+      "path": "services\\document-processor-mistral-correct.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 562
+    },
+    {
+      "path": "services\\document-processor-mistral-enhanced.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 449
+    },
+    {
+      "path": "services\\document-processor-segmented.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 382
+    },
+    {
+      "path": "services\\notification.service.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 220
+    },
+    {
+      "path": "services\\spanish-catalan-invoice-processor.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 634
+    },
+    {
+      "path": "services\\suppliers-customers-manager.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 699
+    },
+    {
+      "path": "app\\api\\customers\\route.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": true,
+      "lines": 350
+    },
+    {
+      "path": "app\\api\\customers\\[id]\\route.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 280
+    },
+    {
+      "path": "app\\api\\dashboard\\stats\\route.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 192
+    },
+    {
+      "path": "app\\api\\documents\\data\\[jobId]\\route.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 178
+    },
+    {
+      "path": "app\\api\\documents\\debug\\route.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 284
+    },
+    {
+      "path": "app\\api\\documents\\export\\sage\\route.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 267
+    },
+    {
+      "path": "app\\api\\documents\\link\\route.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 212
+    },
+    {
+      "path": "app\\api\\documents\\list\\route.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 156
+    },
+    {
+      "path": "app\\api\\documents\\update\\[jobId]\\route.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 341
+    },
+    {
+      "path": "app\\api\\documents\\upload\\route.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 377
+    },
+    {
+      "path": "app\\api\\setup-database\\route.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 240
+    },
+    {
+      "path": "app\\api\\setup-test-users\\route.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 124
+    },
+    {
+      "path": "app\\api\\suppliers\\route.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 381
+    },
+    {
+      "path": "app\\api\\suppliers\\[id]\\route.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 280
+    },
+    {
+      "path": "app\\api\\test-supabase\\route.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 77
+    },
+    {
+      "path": "contexts\\AuthContext.tsx",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 235
+    },
+    {
+      "path": "contexts\\NotificationContext.backup.tsx",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 293
+    },
+    {
+      "path": "contexts\\NotificationContext.original.tsx",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 293
+    },
+    {
+      "path": "contexts\\NotificationContext.tsx",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 293
+    },
+    {
+      "path": "infrastructure\\repositories\\supabase-audit-log.repository.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 82
+    },
+    {
+      "path": "infrastructure\\repositories\\supabase-document.repository.ts",
+      "hasSupabaseImport": true,
+      "hasCreateClient": true,
+      "hasSupabaseQuery": false,
+      "lines": 112
+    }
+  ],
+  "recommendations": [
+    "Migrar lib/supabase.ts primero",
+    "Actualizar servicios uno por uno",
+    "Verificar todas las APIs",
+    "Probar funcionalidad completa",
+    "Eliminar dependencias de Supabase del package.json"
+  ]
+}

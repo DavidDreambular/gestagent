@@ -1,6 +1,7 @@
 // Script para ejecutar migración SQL usando Supabase client
 // scripts/run-migration.js
 
+const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
@@ -23,150 +24,97 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 console.log('✓ Variables de entorno configuradas correctamente');
 
-// Leer el archivo SQL
-const sqlFile = path.join(__dirname, '../database/001_create_suppliers_customers.sql');
-if (!fs.existsSync(sqlFile)) {
-    console.error('❌ Error: No se encontró el archivo SQL en', sqlFile);
-    process.exit(1);
-}
+// Configuración de base de datos
+const pool = new Pool({
+  host: process.env.POSTGRES_HOST,
+  port: process.env.POSTGRES_PORT,
+  database: process.env.POSTGRES_DB,
+  user: process.env.POSTGRES_USER,
+  password: process.env.POSTGRES_PASSWORD,
+  ssl: false
+});
 
-console.log('✓ Archivo SQL encontrado:', sqlFile);
+async function runMigration() {
+  try {
+    console.log('🗄️ [Migration] Iniciando migración de notificaciones...');
 
-const sqlContent = fs.readFileSync(sqlFile, 'utf8');
-console.log('✓ Contenido SQL leído exitosamente');
-
-async function executeMigration() {
-    try {
-        // Intentar cargar Supabase
-        let supabase;
-        try {
-            const { createClient } = require('@supabase/supabase-js');
-            supabase = createClient(supabaseUrl, supabaseServiceKey, {
-                auth: {
-                    autoRefreshToken: false,
-                    persistSession: false
-                }
-            });
-            console.log('✓ Cliente Supabase inicializado');
-        } catch (err) {
-            console.error('❌ Error: @supabase/supabase-js no está instalado');
-            console.error('   Ejecuta: npm install @supabase/supabase-js');
-            process.exit(1);
-        }
-
-        console.log('\n🔄 Ejecutando comandos SQL individuales...');
-
-        // Dividir SQL en comandos ejecutables
-        const commands = sqlContent
-            .split(';')
-            .map(cmd => cmd.trim())
-            .filter(cmd => 
-                cmd.length > 0 && 
-                !cmd.startsWith('--') && 
-                !cmd.startsWith('/*') &&
-                !cmd.includes('RAISE NOTICE')
-            );
-
-        console.log(`   Encontrados ${commands.length} comandos SQL para ejecutar`);
-
-        let successCount = 0;
-        let errorCount = 0;
-
-        for (let i = 0; i < commands.length; i++) {
-            const command = commands[i].trim();
-            
-            if (command.length === 0) continue;
-
-            try {
-                console.log(`   ${i + 1}/${commands.length}: Ejecutando...`);
-                
-                // Para CREATE TABLE, CREATE INDEX, CREATE VIEW, etc.
-                if (command.match(/^(CREATE|ALTER|DROP|INSERT)/i)) {
-                    // Usar rpc para ejecutar SQL directo
-                    const { error } = await supabase.rpc('exec_sql', {
-                        sql: command + ';'
-                    });
-
-                    if (error) {
-                        // Si exec_sql no existe, intentar con apply_migration
-                        const { error: migrationError } = await supabase.rpc('apply_migration', {
-                            name: `migration_${Date.now()}`,
-                            sql: command + ';'
-                        });
-
-                        if (migrationError) {
-                            console.warn(`   ⚠️  Advertencia en comando ${i + 1}:`, error.message);
-                            errorCount++;
-                        } else {
-                            successCount++;
-                        }
-                    } else {
-                        successCount++;
-                    }
-                } else {
-                    // Saltar comandos que no son DDL
-                    console.log(`   ${i + 1}/${commands.length}: Saltando comando no-DDL`);
-                }
-
-            } catch (err) {
-                console.warn(`   ⚠️  Error en comando ${i + 1}:`, err.message);
-                errorCount++;
-            }
-        }
-
-        console.log(`\n📊 Resumen de migración:`);
-        console.log(`   ✅ Comandos exitosos: ${successCount}`);
-        console.log(`   ⚠️  Comandos con advertencias: ${errorCount}`);
-
-        // Verificar que las tablas se crearon
-        await verifyTables(supabase);
-
-        console.log('\n🎯 Próximos pasos:');
-        console.log('   1. Reinicia la aplicación NextJS si está ejecutándose');
-        console.log('   2. Navega a /dashboard/suppliers o /dashboard/customers');
-        console.log('   3. Procesa algunas facturas para probar el sistema');
-        
-        console.log('\n🎉 ¡Migración completada exitosamente!');
-
-    } catch (error) {
-        console.error('\n❌ Error durante la migración:');
-        console.error(error.message);
-        process.exit(1);
-    }
-}
-
-async function verifyTables(supabase) {
-    console.log('\n🔍 Verificando tablas creadas...');
+    // Leer el archivo de migración
+    const migrationPath = path.join(__dirname, '../supabase/migrations/006_create_provider_notifications.sql');
     
-    try {
-        // Verificar tabla suppliers
-        const { data: suppliers, error: suppliersError } = await supabase
-            .from('suppliers')
-            .select('supplier_id')
-            .limit(1);
-        
-        if (!suppliersError) {
-            console.log('   ✓ Tabla suppliers: Creada correctamente');
-        } else {
-            console.log('   ❌ Tabla suppliers:', suppliersError.message);
-        }
-        
-        // Verificar tabla customers
-        const { data: customers, error: customersError } = await supabase
-            .from('customers')
-            .select('customer_id')
-            .limit(1);
-        
-        if (!customersError) {
-            console.log('   ✓ Tabla customers: Creada correctamente');
-        } else {
-            console.log('   ❌ Tabla customers:', customersError.message);
-        }
-        
-    } catch (error) {
-        console.log('   ⚠️  Error verificando tablas:', error.message);
+    if (!fs.existsSync(migrationPath)) {
+      console.log('⚠️ [Migration] Archivo de migración no encontrado, creando tabla manualmente...');
+      
+      // Crear tabla de notificaciones manualmente
+      const createTableQuery = `
+        -- Crear tabla para notificaciones de proveedores
+        CREATE TABLE IF NOT EXISTS provider_notifications (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            supplier_id UUID NOT NULL,
+            document_id VARCHAR(255),
+            type VARCHAR(50) NOT NULL CHECK (type IN ('document_received', 'document_validated', 'document_error', 'information_required')),
+            title VARCHAR(255) NOT NULL,
+            message TEXT NOT NULL,
+            metadata JSONB DEFAULT '{}',
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            read_at TIMESTAMPTZ NULL
+        );
+
+        -- Crear índices para optimizar consultas
+        CREATE INDEX IF NOT EXISTS idx_provider_notifications_supplier_id ON provider_notifications(supplier_id);
+        CREATE INDEX IF NOT EXISTS idx_provider_notifications_document_id ON provider_notifications(document_id);
+        CREATE INDEX IF NOT EXISTS idx_provider_notifications_type ON provider_notifications(type);
+        CREATE INDEX IF NOT EXISTS idx_provider_notifications_created_at ON provider_notifications(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_provider_notifications_read_at ON provider_notifications(read_at) WHERE read_at IS NULL;
+
+        -- Insertar datos de ejemplo
+        INSERT INTO provider_notifications (supplier_id, document_id, type, title, message, metadata) 
+        SELECT 
+            s.supplier_id,
+            'DOC-' || gen_random_uuid()::text,
+            'document_received',
+            'Documento recibido correctamente',
+            'Su factura ha sido recibida y está siendo procesada.',
+            jsonb_build_object(
+                'documentName', 'Factura #' || (1000 + (random() * 1000)::int),
+                'documentNumber', 'FAC-' || (random() * 10000)::int,
+                'receivedDate', NOW()::date
+            )
+        FROM suppliers s 
+        WHERE s.status = 'active'
+        LIMIT 3
+        ON CONFLICT DO NOTHING;
+      `;
+
+      await pool.query(createTableQuery);
+      console.log('✅ [Migration] Tabla de notificaciones creada manualmente');
+    } else {
+      const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
+      await pool.query(migrationSQL);
+      console.log('✅ [Migration] Migración ejecutada desde archivo');
     }
+
+    // Verificar que la tabla existe
+    const checkResult = await pool.query(`
+      SELECT COUNT(*) as count 
+      FROM information_schema.tables 
+      WHERE table_name = 'provider_notifications'
+    `);
+
+    if (parseInt(checkResult.rows[0].count) > 0) {
+      console.log('✅ [Migration] Tabla provider_notifications verificada');
+      
+      // Contar notificaciones
+      const countResult = await pool.query('SELECT COUNT(*) as total FROM provider_notifications');
+      console.log(`📊 [Migration] Notificaciones en la tabla: ${countResult.rows[0].total}`);
+    } else {
+      console.error('❌ [Migration] Error: tabla no creada');
+    }
+
+  } catch (error) {
+    console.error('❌ [Migration] Error ejecutando migración:', error);
+  } finally {
+    await pool.end();
+  }
 }
 
-// Ejecutar migración
-executeMigration(); 
+runMigration(); 

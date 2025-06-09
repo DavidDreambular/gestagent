@@ -2,157 +2,130 @@
 // /app/api/dashboard/summary/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { sqliteClient } from '@/lib/sqlite-client';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    // Verificar autenticación
-    const session = await getServerSession(authOptions);
-    const userId = session?.user?.id || request.headers.get('user-id');
-    
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'No autorizado' },
-        { status: 401 }
-      );
-    }
+    console.log('📊 [DASHBOARD API] Obteniendo resumen del dashboard');
 
-    // Crear cliente de Supabase
-    const supabase = createServerComponentClient({ cookies });
+    // Obtener estadísticas básicas
+    const totalDocsResult = sqliteClient.query<{ count: number }>(
+      'SELECT COUNT(*) as count FROM documents'
+    );
 
-    // Obtener todos los documentos del usuario
-    const { data: documents, error } = await supabase
-      .from('documents')
-      .select('*')
-      .eq('user_id', userId);
+    const completedDocsResult = sqliteClient.query<{ count: number }>(
+      'SELECT COUNT(*) as count FROM documents WHERE status = ?',
+      ['completed']
+    );
 
-    if (error) {
-      throw error;
-    }
+    const processingDocsResult = sqliteClient.query<{ count: number }>(
+      'SELECT COUNT(*) as count FROM documents WHERE status = ?',
+      ['processing']
+    );
+
+    const errorDocsResult = sqliteClient.query<{ count: number }>(
+      'SELECT COUNT(*) as count FROM documents WHERE status = ?',
+      ['error']
+    );
+
+    // Documentos recientes (últimos 7 días)
+    const recentDocsResult = sqliteClient.query<{ count: number }>(
+      `SELECT COUNT(*) as count FROM documents 
+       WHERE upload_timestamp >= datetime('now', '-7 days')`
+    );
+
+    // Documentos este mes
+    const thisMonthResult = sqliteClient.query<{ count: number }>(
+      `SELECT COUNT(*) as count FROM documents 
+       WHERE upload_timestamp >= datetime('now', 'start of month')`
+    );
+
+    // Documentos mes pasado
+    const lastMonthResult = sqliteClient.query<{ count: number }>(
+      `SELECT COUNT(*) as count FROM documents 
+       WHERE upload_timestamp >= datetime('now', 'start of month', '-1 month')
+       AND upload_timestamp < datetime('now', 'start of month')`
+    );
 
     // Calcular estadísticas
-    const stats = {
-      totalDocuments: documents?.length || 0,
-      pendingDocuments: documents?.filter(d => 
-        d.status === 'UPLOADED' || d.status === 'PROCESSING'
-      ).length || 0,
-      totalAmount: 0,
-      totalTaxes: 0,
-      documentsTrend: calculateTrend(documents || [], 'count'),
-      pendingTrend: calculateTrend(documents || [], 'pending'),
-      amountTrend: calculateTrend(documents || [], 'amount'),
-      taxesTrend: calculateTrend(documents || [], 'taxes')
+    const totalDocuments = totalDocsResult.data?.[0]?.count || 0;
+    const completedDocuments = completedDocsResult.data?.[0]?.count || 0;
+    const processingDocuments = processingDocsResult.data?.[0]?.count || 0;
+    const errorDocuments = errorDocsResult.data?.[0]?.count || 0;
+    const recentDocuments = recentDocsResult.data?.[0]?.count || 0;
+    const documentsThisMonth = thisMonthResult.data?.[0]?.count || 0;
+    const documentsLastMonth = lastMonthResult.data?.[0]?.count || 0;
+
+    // Calcular tasa de éxito
+    const successRate = totalDocuments > 0 
+      ? Math.round((completedDocuments / totalDocuments) * 100 * 100) / 100
+      : 0;
+
+    // Calcular tasa de crecimiento
+    const growthRate = documentsLastMonth > 0
+      ? Math.round(((documentsThisMonth - documentsLastMonth) / documentsLastMonth) * 100 * 100) / 100
+      : 0;
+
+    const summary = {
+      totalDocuments,
+      completedDocuments,
+      processingDocuments,
+      errorDocuments,
+      recentDocuments,
+      successRate,
+      avgProcessingTime: 2.4, // Mock value
+      documentsThisMonth,
+      documentsLastMonth,
+      growthRate,
+      // Datos adicionales
+      statusBreakdown: {
+        completed: completedDocuments,
+        processing: processingDocuments,
+        error: errorDocuments,
+        pending: Math.max(0, totalDocuments - completedDocuments - processingDocuments - errorDocuments)
+      },
+      // Actividad reciente mock
+      recentActivity: [
+        {
+          id: '1',
+          type: 'document_processed',
+          title: 'Documento procesado',
+          description: 'Factura procesada exitosamente',
+          timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+          user: 'admin'
+        },
+        {
+          id: '2',
+          type: 'document_uploaded',
+          title: 'Documento subido',
+          description: 'Nueva nómina subida al sistema',
+          timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+          user: 'operador'
+        }
+      ]
     };
 
-    // Calcular montos totales
-    documents?.forEach(doc => {
-      if (doc.processed_json?.totals) {
-        stats.totalAmount += doc.processed_json.totals.total || 0;
-        stats.totalTaxes += doc.processed_json.totals.total_taxes || 0;
-      }
+    console.log('✅ [DASHBOARD API] Resumen generado:', {
+      total: totalDocuments,
+      completed: completedDocuments,
+      successRate: `${successRate}%`
     });
-
-    // Agrupar por tipo de documento
-    const typeMap = new Map<string, number>();
-    documents?.forEach(doc => {
-      const type = doc.document_type || 'otros';
-      typeMap.set(type, (typeMap.get(type) || 0) + 1);
-    });
-
-    const documentTypes = Array.from(typeMap.entries()).map(([name, value]) => ({
-      name: formatTypeName(name),
-      value
-    }));
-
-    // Agrupar por estado
-    const statusCounts = {
-      PROCESSED: 0,
-      PROCESSING: 0,
-      ERROR: 0,
-      UPLOADED: 0
-    };
-
-    documents?.forEach(doc => {
-      if (statusCounts.hasOwnProperty(doc.status)) {
-        statusCounts[doc.status as keyof typeof statusCounts]++;
-      }
-    });
-
-    const documentStatus = [
-      { name: 'Validados', value: statusCounts.PROCESSED },
-      { name: 'Procesando', value: statusCounts.PROCESSING },
-      { name: 'Con errores', value: statusCounts.ERROR },
-      { name: 'Pendientes', value: statusCounts.UPLOADED }
-    ];
-
-    // Obtener documentos recientes
-    const recentDocuments = (documents || [])
-      .sort((a, b) => new Date(b.upload_timestamp).getTime() - new Date(a.upload_timestamp).getTime())
-      .slice(0, 5)
-      .map(doc => ({
-        id: doc.job_id,
-        title: doc.title || doc.file_name || `${doc.document_type} - ${doc.job_id.slice(0, 8)}`,
-        type: doc.document_type,
-        status: mapStatus(doc.status),
-        date: doc.upload_timestamp,
-        emitter: doc.emitter_name || doc.processed_json?.emitter?.name || 'Sin emisor',
-        receiver: doc.receiver_name || doc.processed_json?.receiver?.name || 'Sin receptor',
-        amount: doc.processed_json?.totals?.total || 0
-      }));
 
     return NextResponse.json({
-      stats,
-      documentTypes,
-      documentStatus,
-      recentDocuments
+      success: true,
+      data: summary,
+      timestamp: new Date().toISOString()
     });
 
-  } catch (error: any) {
-    console.error('[Dashboard Summary] Error:', error);
-    return NextResponse.json(
-      { error: 'Error al obtener resumen del dashboard' },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error('❌ [DASHBOARD API] Error:', error);
+    
+    return NextResponse.json({
+      success: false,
+      error: 'Error interno del servidor',
+      details: error instanceof Error ? error.message : 'Error desconocido'
+    }, { status: 500 });
   }
-}
-
-// Función auxiliar para calcular tendencias (simplificada)
-function calculateTrend(documents: any[], metric: string): number {
-  // Por ahora devolvemos valores aleatorios
-  // En producción, esto debería comparar con el período anterior
-  const trends = {
-    count: 15,
-    pending: -12,
-    amount: 22,
-    taxes: 18
-  };
-  return trends[metric as keyof typeof trends] || 0;
-}
-
-// Función para formatear nombres de tipos
-function formatTypeName(type: string): string {
-  const typeNames: Record<string, string> = {
-    factura: 'Facturas',
-    nomina: 'Nóminas',
-    recibo: 'Recibos',
-    extracto: 'Extractos',
-    balance: 'Balances'
-  };
-  return typeNames[type] || 'Otros';
-}
-
-// Función para mapear estados
-function mapStatus(status: string): string {
-  const statusMap: Record<string, string> = {
-    PROCESSED: 'validated',
-    PROCESSING: 'processing',
-    ERROR: 'error',
-    UPLOADED: 'pending'
-  };
-  return statusMap[status] || status.toLowerCase();
 }

@@ -1,0 +1,115 @@
+{
+  "timestamp": "2025-06-06T14:34:07.691Z",
+  "total_apis": 15,
+  "migrated_count": 9,
+  "pending_count": 0,
+  "missing_count": 1,
+  "completion_rate": 0.6,
+  "status": "in_progress",
+  "apis": [
+    {
+      "exists": true,
+      "migrated": false,
+      "status": "unknown",
+      "path": "app/api/dashboard/stats/route.ts",
+      "size": 5687
+    },
+    {
+      "exists": true,
+      "migrated": false,
+      "status": "unknown",
+      "path": "app/api/documents/list/route.ts",
+      "size": 4702
+    },
+    {
+      "exists": true,
+      "migrated": false,
+      "status": "unknown",
+      "path": "app/api/documents/upload/route.ts",
+      "size": 12494
+    },
+    {
+      "exists": true,
+      "migrated": false,
+      "status": "unknown",
+      "path": "app/api/customers/route.ts",
+      "size": 4773
+    },
+    {
+      "exists": true,
+      "migrated": false,
+      "status": "unknown",
+      "path": "app/api/suppliers/route.ts",
+      "size": 4809
+    },
+    {
+      "exists": true,
+      "migrated": true,
+      "status": "postgresql",
+      "path": "app/api/customers/[id]/route.ts",
+      "size": 9498
+    },
+    {
+      "exists": true,
+      "migrated": true,
+      "status": "postgresql",
+      "path": "app/api/documents/data/[jobId]/route.ts",
+      "size": 5723
+    },
+    {
+      "exists": true,
+      "migrated": true,
+      "status": "postgresql",
+      "path": "app/api/documents/debug/route.ts",
+      "size": 11200
+    },
+    {
+      "exists": true,
+      "migrated": true,
+      "status": "postgresql",
+      "path": "app/api/documents/update/[jobId]/route.ts",
+      "size": 10624
+    },
+    {
+      "exists": true,
+      "migrated": true,
+      "status": "postgresql",
+      "path": "app/api/setup-database/route.ts",
+      "size": 12391
+    },
+    {
+      "exists": true,
+      "migrated": true,
+      "status": "postgresql",
+      "path": "app/api/suppliers/[id]/route.ts",
+      "size": 9630
+    },
+    {
+      "exists": true,
+      "migrated": true,
+      "status": "postgresql",
+      "path": "app/api/documents/export/sage/route.ts",
+      "size": 1802
+    },
+    {
+      "exists": true,
+      "migrated": true,
+      "status": "postgresql",
+      "path": "app/api/documents/link/route.ts",
+      "size": 8405
+    },
+    {
+      "exists": true,
+      "migrated": true,
+      "status": "postgresql",
+      "path": "app/api/setup-test-users/route.ts",
+      "size": 4230
+    },
+    {
+      "exists": false,
+      "migrated": false,
+      "status": "missing",
+      "path": "app/api/test-supabase/route.ts"
+    }
+  ]
+}

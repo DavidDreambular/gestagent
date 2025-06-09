@@ -1,186 +1,185 @@
-// Hook para obtener estadísticas del dashboard
+// Hook para datos del dashboard - Versión Mock sin Supabase
+'use client';
+
 import { useState, useEffect, useCallback } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '@/types/supabase';
-import { useAuth } from '@/contexts/AuthContext';
 
 export interface DashboardStats {
   totalDocuments: number;
-  pendingDocuments: number;
-  totalAmount: number;
-  totalTaxes: number;
-  documentsTrend: number;
-  pendingTrend: number;
-  amountTrend: number;
-  taxesTrend: number;
+  completedDocuments: number;
+  processingDocuments: number;
+  errorDocuments: number;
+  recentDocuments: number;
+  successRate: number;
+  avgProcessingTime: number;
+  documentsThisMonth: number;
+  documentsLastMonth: number;
+  growthRate: number;
 }
 
-export interface DocumentTypeStats {
-  name: string;
-  value: number;
-}
-
-export interface DocumentStatusStats {
-  name: string;
-  value: number;
-}
-
-export interface RecentDocument {
+export interface RecentActivity {
   id: string;
+  type: 'document_uploaded' | 'document_processed' | 'document_error' | 'user_login';
   title: string;
-  type: string;
-  status: string;
-  date: string;
-  emitter: string;
-  receiver: string;
-  amount: number;
+  description: string;
+  timestamp: string;
+  user?: string;
 }
 
-export interface DashboardData {
-  stats: DashboardStats;
-  documentTypes: DocumentTypeStats[];
-  documentStatus: DocumentStatusStats[];
-  recentDocuments: RecentDocument[];
-}
+// Datos mock para el dashboard
+const mockStats: DashboardStats = {
+  totalDocuments: 156,
+  completedDocuments: 142,
+  processingDocuments: 8,
+  errorDocuments: 6,
+  recentDocuments: 23,
+  successRate: 91.0,
+  avgProcessingTime: 2.4,
+  documentsThisMonth: 45,
+  documentsLastMonth: 38,
+  growthRate: 18.4
+};
+
+const mockRecentActivity: RecentActivity[] = [
+  {
+    id: '1',
+    type: 'document_processed',
+    title: 'Factura procesada',
+    description: 'Factura de Empresa ABC S.L. procesada exitosamente',
+    timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    user: 'admin'
+  },
+  {
+    id: '2',
+    type: 'document_uploaded',
+    title: 'Documento subido',
+    description: 'Nueva nómina subida al sistema',
+    timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+    user: 'operador'
+  },
+  {
+    id: '3',
+    type: 'document_error',
+    title: 'Error en procesamiento',
+    description: 'Error al procesar factura - formato no reconocido',
+    timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    user: 'admin'
+  },
+  {
+    id: '4',
+    type: 'user_login',
+    title: 'Inicio de sesión',
+    description: 'Usuario admin inició sesión',
+    timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+    user: 'admin'
+  },
+  {
+    id: '5',
+    type: 'document_processed',
+    title: 'Lote procesado',
+    description: '5 documentos procesados en lote',
+    timestamp: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    user: 'admin'
+  }
+];
 
 export function useDashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  const { user } = useAuth();
-  const supabase = createClientComponentClient<Database>();
 
-  const fetchDashboardData = useCallback(async () => {
-    if (!user?.id) {
-      setLoading(false);
-      return;
-    }
-
+  // Cargar estadísticas del dashboard
+  const loadDashboardData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-
-      // Obtener documentos del usuario
-      const { data: documents, error: docsError } = await supabase
-        .from('documents')
-        .select('*')
-        .eq('user_id', user.id);
-
-      if (docsError) throw docsError;
-
-      // Calcular estadísticas
-      const stats: DashboardStats = {
-        totalDocuments: documents?.length || 0,
-        pendingDocuments: documents?.filter(d => 
-          d.status === 'UPLOADED' || d.status === 'PROCESSING'
-        ).length || 0,
-        totalAmount: 0,
-        totalTaxes: 0,
-        documentsTrend: 15, // Por ahora valores estáticos
-        pendingTrend: -12,
-        amountTrend: 22,
-        taxesTrend: 18
-      };
-
-      // Calcular montos desde processed_json
-      documents?.forEach(doc => {
-        if (doc.processed_json?.totals) {
-          stats.totalAmount += doc.processed_json.totals.total || 0;
-          stats.totalTaxes += doc.processed_json.totals.total_taxes || 0;
-        }
-      });
-
-      // Estadísticas por tipo de documento
-      const typeMap = new Map<string, number>();
-      documents?.forEach(doc => {
-        const type = doc.document_type || 'otros';
-        typeMap.set(type, (typeMap.get(type) || 0) + 1);
-      });
-
-      const documentTypes: DocumentTypeStats[] = Array.from(typeMap.entries()).map(([name, value]) => ({
-        name: name.charAt(0).toUpperCase() + name.slice(1) + 's',
-        value
-      }));
-
-      // Estadísticas por estado
-      const statusMap = new Map<string, number>();
-      documents?.forEach(doc => {
-        const status = doc.status || 'UNKNOWN';
-        statusMap.set(status, (statusMap.get(status) || 0) + 1);
-      });
-
-      const documentStatus: DocumentStatusStats[] = [
-        { name: 'Validados', value: statusMap.get('PROCESSED') || 0 },
-        { name: 'Procesando', value: statusMap.get('PROCESSING') || 0 },
-        { name: 'Con errores', value: statusMap.get('ERROR') || 0 },
-        { name: 'Pendientes', value: statusMap.get('UPLOADED') || 0 }
-      ];
-
-      // Documentos recientes (últimos 5)
-      const recentDocuments: RecentDocument[] = (documents || [])
-        .sort((a, b) => new Date(b.upload_timestamp).getTime() - new Date(a.upload_timestamp).getTime())
-        .slice(0, 5)
-        .map(doc => ({
-          id: doc.job_id,
-          title: doc.title || doc.file_name || `${doc.document_type} - ${doc.job_id.slice(0, 8)}`,
-          type: doc.document_type,
-          status: doc.status.toLowerCase(),
-          date: doc.upload_timestamp,
-          emitter: doc.emitter_name || doc.processed_json?.emitter?.name || 'Sin emisor',
-          receiver: doc.receiver_name || doc.processed_json?.receiver?.name || 'Sin receptor',
-          amount: doc.processed_json?.totals?.total || 0
-        }));
-
-      setData({
-        stats,
-        documentTypes,
-        documentStatus,
-        recentDocuments
-      });
-
+      
+      console.log('📊 [DASHBOARD] Cargando datos del dashboard...');
+      
+      // Simular carga asíncrona
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      setStats(mockStats);
+      setRecentActivity(mockRecentActivity);
+      
+      console.log('✅ [DASHBOARD] Datos cargados exitosamente');
+      
     } catch (err) {
-      console.error('Error fetching dashboard data:', err);
-      setError(err instanceof Error ? err.message : 'Error al cargar el dashboard');
+      console.error('❌ [DASHBOARD] Error cargando datos:', err);
+      setError('Error cargando datos del dashboard');
     } finally {
       setLoading(false);
     }
-  }, [user?.id, supabase]);
+  }, []);
 
-  // Suscripción a cambios en tiempo real
-  useEffect(() => {
-    if (!user?.id) return;
-
-    // Cargar datos iniciales
-    fetchDashboardData();
-
-    // Suscribirse a cambios
-    const channel = supabase
-      .channel('dashboard-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'documents',
-          filter: `user_id=eq.${user.id}`
-        },
-        () => {
-          // Recargar datos cuando hay cambios
-          fetchDashboardData();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
+  // Obtener estadísticas por período
+  const getStatsByPeriod = useCallback((period: 'today' | 'week' | 'month' | 'year') => {
+    // Mock data basado en el período
+    const multipliers = {
+      today: 0.1,
+      week: 0.3,
+      month: 1,
+      year: 12
     };
-  }, [user?.id, supabase, fetchDashboardData]);
+    
+    const multiplier = multipliers[period];
+    
+    return {
+      documents: Math.round(mockStats.totalDocuments * multiplier),
+      processed: Math.round(mockStats.completedDocuments * multiplier),
+      errors: Math.round(mockStats.errorDocuments * multiplier),
+      successRate: mockStats.successRate
+    };
+  }, []);
+
+  // Obtener datos para gráficos
+  const getChartData = useCallback((type: 'documents' | 'processing_time' | 'success_rate') => {
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - i));
+      return date.toISOString().split('T')[0];
+    });
+
+    switch (type) {
+      case 'documents':
+        return last7Days.map(date => ({
+          date,
+          value: Math.floor(Math.random() * 20) + 5
+        }));
+      
+      case 'processing_time':
+        return last7Days.map(date => ({
+          date,
+          value: Math.random() * 2 + 1.5
+        }));
+      
+      case 'success_rate':
+        return last7Days.map(date => ({
+          date,
+          value: Math.random() * 10 + 85
+        }));
+      
+      default:
+        return [];
+    }
+  }, []);
+
+  // Cargar datos al montar el hook
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
 
   return {
-    data,
+    stats,
+    recentActivity,
     loading,
     error,
-    refresh: fetchDashboardData
+    loadDashboardData,
+    getStatsByPeriod,
+    getChartData,
+    // Funciones de utilidad
+    isLoading: loading,
+    hasError: !!error,
+    isEmpty: !stats && !loading
   };
 }

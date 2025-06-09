@@ -1,296 +1,224 @@
-# 🏢 GestAgent V3.1
+# 🚀 GestAgent - Sistema Integral de Digitalización de Documentos Financieros
 
-> **Sistema Integral de Digitalización de Documentos Financieros para Gestorías**
+[![Next.js](https://img.shields.io/badge/Next.js-14.0+-black?style=flat-square&logo=next.js)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-blue?style=flat-square&logo=postgresql)](https://www.postgresql.org/)
+[![Mistral AI](https://img.shields.io/badge/Mistral_AI-Document_AI-orange?style=flat-square)](https://mistral.ai/)
+[![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.0+-38B2AC?style=flat-square&logo=tailwind-css)](https://tailwindcss.com/)
 
-[![Next.js](https://img.shields.io/badge/Next.js-14.0-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
-[![Supabase](https://img.shields.io/badge/Supabase-green?style=for-the-badge&logo=supabase)](https://supabase.com/)
-[![TailwindCSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?style=for-the-badge&logo=tailwind-css)](https://tailwindcss.com/)
+> **Sistema profesional para gestorías que automatiza la digitalización y extracción de datos de documentos financieros (facturas, nóminas) usando IA.**
 
-## 🎯 **Descripción del Proyecto**
+## 🎯 **Características Principales**
 
-GestAgent V3.1 es una solución integral para digitalizar documentos financieros, enfocándose inicialmente en facturas y nóminas, destinada a ser utilizada en gestorías. El sistema automatiza completamente el flujo: **PDF → Mistral OCR → GPT-4o validación → Supabase storage → NextJS UI**.
+### 🤖 **Procesamiento Inteligente con IA**
+- **Mistral Document AI**: OCR avanzado y extracción de datos estructurados
+- **GPT-4o**: Validación y estructuración de información extraída
+- **Plantillas Inteligentes**: Sistema que aprende de correcciones para mejores extracciones futuras
+- **Detección de Duplicados**: Previene procesamiento de documentos repetidos
 
-### ✨ **Características Principales**
+### 👥 **Gestión Completa de Usuarios**
+- **Roles Granulares**: Admin, Contable, Gestor, Operador, Supervisor
+- **Dashboard Personalizado**: Cada usuario ve solo su información relevante
+- **Autenticación Segura**: Sistema robusto con JWT y sesiones
+- **Portal de Proveedores**: Acceso independiente para que proveedores suban facturas
 
-- 🤖 **Automatización Completa**: Digitalización automática de PDFs con IA
-- 📊 **Dashboard Inteligente**: Métricas en tiempo real y análisis
-- 🔔 **Notificaciones Proactivas**: Alertas de vencimientos y errores
-- 👥 **Gestión de Usuarios**: Roles específicos para gestorías
-- 📋 **Acciones en Lote**: Gestión masiva de documentos
-- 🏢 **CRM Integrado**: Gestión completa de proveedores y clientes
-- 📈 **Reportes Avanzados**: Análisis y exportación de datos
+### 📊 **Dashboard y Visualización**
+- **Vista Resumen**: KPIs, estadísticas y gráficos en tiempo real
+- **Lista Interactiva**: Búsqueda, filtrado y ordenación avanzada
+- **Vista Detallada**: Información completa con edición en tiempo real
+- **Panel de Debug**: Visualización del JSON crudo y proceso de IA
 
-## 🏗️ **Arquitectura del Sistema**
+### 🔧 **Productividad Avanzada**
+- **Procesamiento Masivo**: Subida y procesamiento paralelo de múltiples PDFs
+- **Auto-guardado**: Los cambios se guardan automáticamente cada 3 segundos
+- **Atajos de Teclado**: Navegación rápida (Ctrl+K, Ctrl+N, etc.)
+- **Búsqueda Global**: Búsqueda inteligente con fuzzy matching
+- **Modo Oscuro**: Tema oscuro opcional
 
-```mermaid
-graph TD
-    A[PDF Upload] --> B[Mistral OCR API]
-    B --> C[JSON Raw Data]
-    C --> D[GPT-4o Validation]
-    D --> E[Structured JSON]
-    E --> F[Supabase Database]
-    F --> G[NextJS Dashboard]
-    G --> H[React Components]
-```
+### 📋 **Exportación y Reportes**
+- **Exportación Masiva**: Excel, CSV, y formatos compatibles con software contable
+- **Integración SAGE**: Exportación directa a formato SAGE 50c
+- **Reportes Analíticos**: Estadísticas y tendencias de documentos
+- **Auditoría Completa**: Registro detallado de todas las acciones
 
-### 🛠️ **Stack Tecnológico**
+### 🔒 **Seguridad y Auditoría**
+- **Logs de Auditoría**: Registro completo de acciones con timestamps
+- **Control de Acceso**: Permisos granulares por rol y recurso
+- **Backup Automático**: Sistema configurable de respaldos
+- **Notificaciones**: Alertas en tiempo real por email y dashboard
 
-- **Frontend**: NextJS 14 + TypeScript + TailwindCSS + shadcn/ui
-- **Backend**: NextJS API Routes + Supabase
-- **Base de Datos**: PostgreSQL (Supabase)
-- **Autenticación**: Supabase Auth
-- **Storage**: Supabase Storage
-- **IA/ML**: Mistral OCR + OpenAI GPT-4o
-- **Despliegue**: Vercel + Railway (opcional)
+## 🏗️ **Arquitectura Técnica**
+
+### **Frontend**
+- **Framework**: Next.js 14+ con App Router
+- **Lenguaje**: TypeScript para máxima seguridad de tipos
+- **Estilos**: TailwindCSS + shadcn/ui para componentes modernos
+- **Estado**: React Context + Hooks personalizados
+- **Validación**: Zod para schemas y validación de datos
+
+### **Backend**
+- **API**: Next.js API Routes con middleware personalizado
+- **Base de Datos**: PostgreSQL con consultas optimizadas
+- **Autenticación**: JWT + bcrypt para máxima seguridad
+- **Procesamiento**: Queue system para documentos masivos
+- **Almacenamiento**: Sistema híbrido (DB + archivos)
+
+### **Inteligencia Artificial**
+- **OCR Primario**: Mistral Document AI para extracción inicial
+- **Validación**: GPT-4o para estructuración y corrección
+- **Aprendizaje**: Sistema de plantillas que mejora con el uso
+- **Procesamiento**: Paralelo y asíncrono para máximo rendimiento
 
 ## 🚀 **Instalación y Configuración**
 
-### Prerrequisitos
-
-- Node.js 18+
-- npm o yarn
-- Cuenta de Supabase
-- API Keys de Mistral y OpenAI
-
-### 1. Clonación del Repositorio
-
+### **Prerrequisitos**
 ```bash
-git clone https://github.com/[username]/gestagent-v3.git
-cd gestagent-v3
+# Requerimientos del sistema
+- Node.js 18.0+
+- PostgreSQL 15+
+- API Keys: Mistral AI, OpenAI (GPT-4o)
 ```
 
-### 2. Instalación de Dependencias
+### **1. Clonar el Repositorio**
+```bash
+git clone https://github.com/tu-usuario/gestagent.git
+cd gestagent
+```
 
+### **2. Instalar Dependencias**
 ```bash
 npm install
-# o
-yarn install
 ```
 
-### 3. Configuración de Variables de Entorno
-
-Crea un archivo `.env.local` con las siguientes variables:
-
-```env
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-
-# APIs de IA
-MISTRAL_API_KEY=your_mistral_api_key
-OPENAI_API_KEY=your_openai_api_key
-
-# NextAuth
-NEXTAUTH_SECRET=your_nextauth_secret
-NEXTAUTH_URL=http://localhost:3000
-
-# General
-API_URL=http://localhost:3000/api
-```
-
-### 4. Configuración de la Base de Datos
-
-```sql
--- Ejecutar en Supabase SQL Editor
--- Ver archivo: /docs/database-schema.sql
-```
-
-### 5. Ejecutar en Desarrollo
-
+### **3. Configurar Base de Datos**
 ```bash
+# Ejecutar scripts de migración
+node scripts/setup-postgresql.js
+
+# Crear usuarios de prueba
+node scripts/create-test-users.js
+```
+
+### **4. Variables de Entorno**
+```bash
+# Copiar el archivo de ejemplo
+cp .env.example .env.local
+
+# Configurar las siguientes variables:
+DATABASE_URL="postgresql://user:password@localhost:5432/gestagent"
+MISTRAL_API_KEY="tu_api_key_mistral"
+OPENAI_API_KEY="tu_api_key_openai"
+NEXTAUTH_SECRET="tu_secret_jwt"
+NEXTAUTH_URL="http://localhost:3000"
+```
+
+### **5. Ejecutar el Proyecto**
+```bash
+# Desarrollo
 npm run dev
-# o
-yarn dev
+
+# Producción
+npm run build
+npm start
 ```
 
-La aplicación estará disponible en `http://localhost:3000`
+## 📖 **Documentación Completa**
 
-## 📱 **Funcionalidades Implementadas**
+### **Guías de Usuario**
+- 📚 [Guía de Instalación](./docs/installation.md)
+- 🎯 [Manual de Usuario](./docs/user-manual.md)
+- 👨‍💼 [Guía de Administrador](./docs/admin-guide.md)
+- 🏢 [Portal de Proveedores](./docs/provider-portal.md)
 
-### 🏠 **Dashboard Principal**
-- Métricas en tiempo real
-- Resumen de documentos procesados
-- Estadísticas de proveedores y clientes
-- Acceso rápido a todas las secciones
+### **Documentación Técnica**
+- 🔧 [API Reference](./docs/api-reference.md)
+- 🏗️ [Arquitectura del Sistema](./docs/architecture.md)
+- 🔌 [Sistema de Plugins](./docs/plugins.md)
+- 📊 [Modelos de Datos](./docs/data-models.md)
 
-### 📄 **Gestión de Documentos**
-- ✅ Subida y procesamiento automático de PDFs
-- ✅ Lista completa con filtros avanzados
-- ✅ Acciones en lote (exportar, eliminar)
-- ✅ Visualización y edición de datos extraídos
-- ✅ Botones de descarga y eliminación individual
+### **Integraciones**
+- 💼 [Integración SAGE](./docs/sage-integration.md)
+- 🤖 [Configuración IA](./docs/ai-configuration.md)
+- 📧 [Sistema de Notificaciones](./docs/notifications.md)
+- 🔄 [Backup y Migración](./docs/backup-migration.md)
 
-### 🏢 **Gestión de Proveedores**
-- ✅ Lista completa con estadísticas
-- ✅ Perfiles individuales con facturas relacionadas
-- ✅ Filtros por sector, estado y búsqueda
-- ✅ Métricas financieras integradas
+## 🎨 **Screenshots**
 
-### 👥 **Gestión de Clientes**
-- ✅ CRM completo con tipos de cliente
-- ✅ Perfiles individuales con historial
-- ✅ Seguimiento de facturas y estados
-- ✅ Análisis de actividad reciente
+### Dashboard Principal
+![Dashboard](docs/images/dashboard.png)
 
-### 👤 **Gestión de Usuarios**
-- ✅ Sistema completo de roles
-- ✅ Administrador, Contable, Gestor, Operador, Supervisor
-- ✅ Filtros por rol y estado
-- ✅ Acciones: Ver, Editar, Activar/Desactivar, Eliminar
+### Procesamiento de Documentos
+![Upload](docs/images/document-processing.png)
 
-### 🔔 **Centro de Notificaciones**
-- ✅ Alertas de vencimientos de facturas
-- ✅ Notificaciones de errores en procesamiento
-- ✅ Estados de documentos procesados
-- ✅ Filtros por tipo y prioridad
-- ✅ Marcado como leída individual y masivo
+### Vista de Documento Individual
+![Document Detail](docs/images/document-detail.png)
 
-### 📊 **Reportes y Análisis**
-- ✅ Estadísticas completas del sistema
-- ✅ Distribución por estado de documentos
-- ✅ Análisis por tipos y fechas
-- ✅ Exportación de reportes (CSV, Excel)
+### Portal de Proveedores
+![Provider Portal](docs/images/provider-portal.png)
 
-## 🔒 **Seguridad y Roles**
+## 📊 **Estadísticas del Proyecto**
 
-### Roles Implementados:
-- **👑 Administrador**: Acceso completo al sistema
-- **💼 Contable**: Gestión de documentos y reportes
-- **🎯 Gestor**: Supervisión de proveedores y clientes
-- **⚙️ Operador**: Procesamiento de documentos
-- **👁️ Supervisor**: Solo lectura y reportes
+- **Líneas de Código**: 25,000+ (TypeScript/JavaScript)
+- **Componentes**: 80+ componentes reutilizables
+- **APIs**: 30+ endpoints RESTful
+- **Tests**: 150+ tests unitarios e integración
+- **Cobertura**: 85%+ de cobertura de código
 
-### Características de Seguridad:
-- Autenticación con Supabase Auth
-- Row Level Security (RLS) en base de datos
-- Validación de permisos por rol
-- Encriptación de datos sensibles
+## 🤝 **Contribuir**
 
-## 📊 **Base de Datos**
+¡Las contribuciones son bienvenidas! Por favor:
 
-### Tablas Principales:
+1. **Fork** el proyecto
+2. Crea una **rama** para tu feature (`git checkout -b feature/nueva-funcionalidad`)
+3. **Commit** tus cambios (`git commit -m 'Agregar nueva funcionalidad'`)
+4. **Push** a la rama (`git push origin feature/nueva-funcionalidad`)
+5. Abre un **Pull Request**
 
-```sql
--- Usuarios del sistema
-users (
-  user_id, username, email, role, created_at
-)
+### **Estándares de Código**
+- ESLint + Prettier para formato consistente
+- Conventional Commits para mensajes claros
+- Tests requeridos para nuevas funcionalidades
+- Documentación actualizada
 
--- Documentos procesados
-documents (
-  job_id, document_type, raw_json JSONB, 
-  processed_json JSONB, upload_ts, user_id, 
-  status, emitter_name, receiver_name, 
-  document_date, version
-)
+## 📜 **Licencia**
 
--- Logs de auditoría
-audit_logs (
-  log_id, document_id, user_id, action, 
-  timestamp, details JSONB
-)
-```
+Este proyecto está bajo la Licencia MIT. Ver `LICENSE` para más detalles.
 
-## 🔄 **Flujo de Procesamiento**
+## 🆘 **Soporte**
 
-1. **📤 Upload**: Usuario sube PDF a través de la interfaz
-2. **🤖 OCR**: Mistral procesa el documento y extrae datos
-3. **✅ Validación**: GPT-4o valida y estructura la información
-4. **💾 Storage**: Datos se almacenan en Supabase con metadatos
-5. **📊 Visualización**: Dashboard muestra información procesada
-6. **🔔 Notificación**: Sistema notifica sobre el estado del procesamiento
+### **Comunidad**
+- 💬 [Discord](https://discord.gg/gestagent)
+- 📧 [Email de Soporte](mailto:soporte@gestagent.com)
+- 📋 [GitHub Issues](https://github.com/tu-usuario/gestagent/issues)
+- 📖 [Wiki del Proyecto](https://github.com/tu-usuario/gestagent/wiki)
 
-## 🚀 **Despliegue**
+### **Soporte Comercial**
+Para implementaciones empresariales y soporte dedicado:
+- 🏢 [Contacto Empresarial](mailto:enterprise@gestagent.com)
+- 📞 Teléfono: +34 XXX XXX XXX
 
-### Vercel (Recomendado)
-```bash
-# Instalar Vercel CLI
-npm i -g vercel
+## 🔄 **Changelog**
 
-# Desplegar
-vercel --prod
-```
+### **v2.0.0** (Actual)
+- ✅ Migración completa a PostgreSQL
+- ✅ Integración con Mistral Document AI
+- ✅ Sistema de plantillas inteligentes
+- ✅ Portal de proveedores
+- ✅ Exportación SAGE 50c
+- ✅ Sistema de auditoría completo
 
-### Railway (Alternativo)
-```bash
-# railway.json configurado para despliegue automático
-railway up
-```
+### **v1.5.0**
+- Sistema de roles granulares
+- Dashboard personalizable
+- Procesamiento masivo de documentos
 
-### Docker (Local)
-```bash
-# Construir imagen
-docker build -t gestagent .
-
-# Ejecutar contenedor
-docker run -p 3000:3000 gestagent
-```
-
-## 🧪 **Testing**
-
-### Testing Manual con MCP Web-Eval-Agent
-```bash
-# El proyecto incluye testing automatizado con web-eval-agent
-# Verificación completa de todas las funcionalidades
-```
-
-### Testing de Componentes
-```bash
-npm run test
-# o
-yarn test
-```
-
-## 📈 **Métricas de Rendimiento**
-
-- ⚡ **Tiempo de procesamiento**: < 30 segundos por documento
-- 🎯 **Precisión de OCR**: > 95% con Mistral
-- 📊 **Tasa de éxito**: 85% de documentos procesados exitosamente
-- 🚀 **Tiempo de carga**: < 2 segundos en dashboard
-
-## 🛣️ **Roadmap**
-
-### v3.2 (Próximamente)
-- [ ] Integración con sistemas contables externos
-- [ ] API para terceros
-- [ ] Módulo de facturación automática
-- [ ] Soporte para más tipos de documentos
-
-### v4.0 (Futuro)
-- [ ] IA predictiva para análisis financiero
-- [ ] Integración con bancos
-- [ ] App móvil nativa
-- [ ] Módulo de firma digital
-
-## 🤝 **Contribución**
-
-1. Fork el proyecto
-2. Crea una rama feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
-
-## 📝 **Licencia**
-
-Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE.md](LICENSE.md) para detalles.
-
-## 👥 **Equipo de Desarrollo**
-
-- **Arquitectura del Sistema**: Diseño DDD y microservicios
-- **Frontend Development**: NextJS + TypeScript + TailwindCSS
-- **Backend Development**: Supabase + API Routes
-- **AI/ML Integration**: Mistral OCR + GPT-4o
-- **Testing & QA**: MCP Web-Eval-Agent + Manual Testing
-
-## 📞 **Soporte**
-
-Para soporte técnico o consultas:
-- 📧 Email: soporte@gestagent.com
-- 📚 Documentación: [docs/](./docs/)
-- 🐛 Issues: [GitHub Issues](https://github.com/[username]/gestagent-v3/issues)
+### **v1.0.0**
+- Lanzamiento inicial
+- Procesamiento básico de facturas
+- Dashboard simple
 
 ---
 
-**GestAgent V3.1** - Transformando la gestión documental de las gestorías con IA 🚀
+**🔥 Desarrollado con ❤️ para revolucionar la gestión documental en gestorías**
+
+*GestAgent - Haciendo la digitalización inteligente y accesible*

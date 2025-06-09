@@ -89,10 +89,16 @@ export default function DashboardPage() {
       const response = await fetch('/api/suppliers');
       if (response.ok) {
         const data = await response.json();
-        setSuppliersStats(data.data.metadata);
+        // Corregir acceso a la estructura real de la API
+        const suppliersData = {
+          total_active: data.total || 0,
+          sectors: data.suppliers?.length || 0
+        };
+        setSuppliersStats(suppliersData);
       }
     } catch (error) {
       console.error('Error loading suppliers stats:', error);
+      setSuppliersStats({ total_active: 0, sectors: 0 });
     }
   };
 
@@ -102,10 +108,16 @@ export default function DashboardPage() {
       const response = await fetch('/api/customers');
       if (response.ok) {
         const data = await response.json();
-        setCustomersStats(data.data.metadata);
+        // Corregir acceso a la estructura real de la API
+        const customersData = {
+          total_active: data.total || 0,
+          types: data.customers?.length || 0
+        };
+        setCustomersStats(customersData);
       }
     } catch (error) {
       console.error('Error loading customers stats:', error);
+      setCustomersStats({ total_active: 0, types: 0 });
     }
   };
 
@@ -288,20 +300,8 @@ export default function DashboardPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600">Sectores:</span>
-                  <span className="font-semibold">{suppliersStats?.available_sectors?.length || 0}</span>
+                  <span className="font-semibold">{suppliersStats?.sectors || 0}</span>
                 </div>
-                {suppliersStats?.available_sectors && (
-                  <div className="mt-2">
-                    <div className="text-xs text-gray-500 mb-1">Sectores principales:</div>
-                    <div className="flex flex-wrap gap-1">
-                      {suppliersStats.available_sectors.slice(0, 3).map((sector: string) => (
-                        <Badge key={sector} variant="secondary" className="text-xs">
-                          {sector}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
                 <Button asChild size="sm" variant="outline" className="w-full">
                   <Link href="/dashboard/suppliers">
                     Ver Todos los Proveedores
@@ -336,21 +336,9 @@ export default function DashboardPage() {
                   <span className="font-semibold">{customersStats?.total_active || 0}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Tipos:</span>
-                  <span className="font-semibold">{customersStats?.available_customer_types?.length || 0}</span>
+                  <span className="text-sm text-gray-600">Registrados:</span>
+                  <span className="font-semibold">{customersStats?.types || 0}</span>
                 </div>
-                {customersStats?.available_customer_types && (
-                  <div className="mt-2">
-                    <div className="text-xs text-gray-500 mb-1">Tipos principales:</div>
-                    <div className="flex flex-wrap gap-1">
-                      {customersStats.available_customer_types.slice(0, 3).map((type: string) => (
-                        <Badge key={type} variant="secondary" className="text-xs">
-                          {type}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
                 <Button asChild size="sm" variant="outline" className="w-full">
                   <Link href="/dashboard/customers">
                     Ver Todos los Clientes

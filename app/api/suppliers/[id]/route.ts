@@ -1,13 +1,47 @@
 // API Route para gestión individual de proveedores
 // /app/api/suppliers/[id]/route.ts
+// Versión 2.0.0 - Migrado a PostgreSQL
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { PostgreSQLClient } from '@/lib/postgresql-client';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Inicializar cliente PostgreSQL
+const pgClient = new PostgreSQLClient();
+
+// Interfaces para tipado
+interface Document {
+  job_id: string;
+  document_type: string;
+  status: string;
+  upload_timestamp: string;
+  document_date: string;
+  total_amount: string;
+  emitter_name: string;
+  receiver_name: string;
+}
+
+interface Supplier {
+  supplier_id: string;
+  name: string;
+  commercial_name?: string;
+  nif_cif: string;
+  address?: string;
+  postal_code?: string;
+  city?: string;
+  province?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  business_sector?: string;
+  company_size?: string;
+  status: string;
+  payment_terms?: string;
+  notes?: string;
+  total_amount?: string;
+  last_invoice_date?: string;
+  activity_status?: string;
+  volume_category?: string;
+}
 
 // GET: Obtener proveedor específico con estadísticas y documentos relacionados
 export async function GET(
@@ -20,24 +54,26 @@ export async function GET(
     console.log(`🔍 [Supplier Detail] Obteniendo proveedor: ${id}`);
 
     // Obtener datos del proveedor
-    const { data: supplier, error: supplierError } = await supabase
-      .from('suppliers')
-      .select('*')
-      .eq('supplier_id', id)
-      .single();
-
-    if (supplierError) {
-      console.error(`❌ [Supplier Detail] Error obteniendo proveedor:`, supplierError);
+    const supplierQuery = `
+      SELECT * FROM suppliers 
+      WHERE supplier_id = $1
+    `;
+    
+    const supplierResult = await pgClient.query<Supplier>(supplierQuery, [id]);
+    
+    if (supplierResult.error || !supplierResult.data || supplierResult.data.length === 0) {
+      console.error(`❌ [Supplier Detail] Proveedor no encontrado: ${id}`);
       return NextResponse.json(
         { error: 'Proveedor no encontrado' },
         { status: 404 }
       );
     }
 
+    const supplier = supplierResult.data[0];
+
     // Obtener documentos relacionados
-    const { data: documents, error: documentsError } = await supabase
-      .from('documents')
-      .select(`
+    const documentsQuery = `
+      SELECT 
         job_id,
         document_type,
         status,
@@ -46,35 +82,35 @@ export async function GET(
         total_amount,
         emitter_name,
         receiver_name
-      `)
-      .eq('supplier_id', id)
-      .order('upload_timestamp', { ascending: false })
-      .limit(50);
+      FROM documents 
+      WHERE supplier_id = $1
+      ORDER BY upload_timestamp DESC
+      LIMIT 50
+    `;
 
-    if (documentsError) {
-      console.warn(`⚠️ [Supplier Detail] Error obteniendo documentos:`, documentsError);
-    }
+    const documentsResult = await pgClient.query<Document>(documentsQuery, [id]);
+    const documents = documentsResult.data || [];
 
     // Calcular estadísticas adicionales
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
-    const recentDocuments = documents?.filter(doc => 
+    const recentDocuments = documents?.filter((doc: Document) => 
       new Date(doc.upload_timestamp) > thirtyDaysAgo
     ).length || 0;
 
-    const documentsLast90Days = documents?.filter(doc => 
+    const documentsLast90Days = documents?.filter((doc: Document) => 
       new Date(doc.upload_timestamp) > ninetyDaysAgo
     ).length || 0;
 
-    const completedDocuments = documents?.filter(doc => 
+    const completedDocuments = documents?.filter((doc: Document) => 
       doc.status === 'completed'
     ).length || 0;
 
     const totalAmountLast90Days = documents
-      ?.filter(doc => new Date(doc.upload_timestamp) > ninetyDaysAgo)
-      ?.reduce((sum, doc) => sum + (doc.total_amount || 0), 0) || 0;
+      ?.filter((doc: Document) => new Date(doc.upload_timestamp) > ninetyDaysAgo)
+      ?.reduce((sum: number, doc: Document) => sum + (parseFloat(doc.total_amount) || 0), 0) || 0;
 
     const response = {
       supplier: {
@@ -92,10 +128,10 @@ export async function GET(
         completed_documents: completedDocuments,
         recent_documents: recentDocuments,
         documents_last_90_days: documentsLast90Days,
-        total_amount: supplier.total_amount || 0,
+        total_amount: parseFloat(supplier.total_amount || '0') || 0,
         total_amount_last_90_days: totalAmountLast90Days,
         average_document_amount: documents && documents.length > 0 
-          ? (supplier.total_amount || 0) / documents.length 
+          ? (parseFloat(supplier.total_amount || '0') || 0) / documents.length 
           : 0,
         last_activity: supplier.last_invoice_date,
         activity_status: supplier.activity_status,
@@ -139,45 +175,55 @@ export async function PUT(
     }
 
     // Actualizar proveedor
-    const { data: updatedSupplier, error: updateError } = await supabase
-      .from('suppliers')
-      .update({
-        name: body.name,
-        commercial_name: body.commercial_name,
-        nif_cif: body.nif_cif,
-        address: body.address,
-        postal_code: body.postal_code,
-        city: body.city,
-        province: body.province,
-        phone: body.phone,
-        email: body.email,
-        website: body.website,
-        business_sector: body.business_sector,
-        company_size: body.company_size,
-        status: body.status,
-        payment_terms: body.payment_terms,
-        notes: body.notes,
-        updated_at: new Date().toISOString()
-      })
-      .eq('supplier_id', id)
-      .select()
-      .single();
+    const updateQuery = `
+      UPDATE suppliers SET
+        name = $2,
+        commercial_name = $3,
+        nif_cif = $4,
+        address = $5,
+        postal_code = $6,
+        city = $7,
+        province = $8,
+        phone = $9,
+        email = $10,
+        website = $11,
+        business_sector = $12,
+        company_size = $13,
+        status = $14,
+        payment_terms = $15,
+        notes = $16,
+        updated_at = NOW()
+      WHERE supplier_id = $1
+      RETURNING *
+    `;
 
-    if (updateError) {
-      console.error(`❌ [Supplier Update] Error:`, updateError);
-      
-      if (updateError.code === '23505') {
-        return NextResponse.json(
-          { error: 'El NIF/CIF ya está registrado para otro proveedor' },
-          { status: 409 }
-        );
-      }
-      
+    const updateResult = await pgClient.query<Supplier>(updateQuery, [
+      id,
+      body.name,
+      body.commercial_name,
+      body.nif_cif,
+      body.address,
+      body.postal_code,
+      body.city,
+      body.province,
+      body.phone,
+      body.email,
+      body.website,
+      body.business_sector,
+      body.company_size,
+      body.status,
+      body.payment_terms,
+      body.notes
+    ]);
+
+    if (updateResult.error || !updateResult.data || updateResult.data.length === 0) {
       return NextResponse.json(
-        { error: 'Error al actualizar el proveedor' },
-        { status: 500 }
+        { error: 'Proveedor no encontrado' },
+        { status: 404 }
       );
     }
+
+    const updatedSupplier = updateResult.data[0];
 
     console.log(`✅ [Supplier Update] Proveedor actualizado: ${updatedSupplier.name}`);
 
@@ -187,8 +233,17 @@ export async function PUT(
       message: 'Proveedor actualizado exitosamente'
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('[Supplier Update] Error:', error);
+    
+    // Manejar error de duplicado NIF/CIF
+    if (error.code === '23505') {
+      return NextResponse.json(
+        { error: 'El NIF/CIF ya está registrado para otro proveedor' },
+        { status: 409 }
+      );
+    }
+    
     return NextResponse.json(
       { error: 'Error interno del servidor' },
       { status: 500 }
@@ -207,35 +262,31 @@ export async function DELETE(
     console.log(`🗑️ [Supplier Delete] Eliminando proveedor: ${id}`);
 
     // Verificar si hay documentos relacionados
-    const { data: relatedDocuments, error: documentsError } = await supabase
-      .from('documents')
-      .select('job_id')
-      .eq('supplier_id', id)
-      .limit(1);
-
-    if (documentsError) {
-      console.error(`❌ [Supplier Delete] Error verificando documentos:`, documentsError);
-      return NextResponse.json(
-        { error: 'Error al verificar documentos relacionados' },
-        { status: 500 }
-      );
-    }
+    const documentsQuery = `
+      SELECT job_id FROM documents 
+      WHERE supplier_id = $1 
+      LIMIT 1
+    `;
+    
+    const documentsResult = await pgClient.query(documentsQuery, [id]);
+    const relatedDocuments = documentsResult.data || [];
 
     // Si hay documentos relacionados, hacer soft delete
     if (relatedDocuments && relatedDocuments.length > 0) {
-      const { error: softDeleteError } = await supabase
-        .from('suppliers')
-        .update({ 
-          status: 'inactive',
-          updated_at: new Date().toISOString()
-        })
-        .eq('supplier_id', id);
+      const softDeleteQuery = `
+        UPDATE suppliers SET
+          status = 'inactive',
+          updated_at = NOW()
+        WHERE supplier_id = $1
+        RETURNING *
+      `;
 
-      if (softDeleteError) {
-        console.error(`❌ [Supplier Delete] Error en soft delete:`, softDeleteError);
+      const softDeleteResult = await pgClient.query<Supplier>(softDeleteQuery, [id]);
+
+      if (softDeleteResult.error || !softDeleteResult.data || softDeleteResult.data.length === 0) {
         return NextResponse.json(
-          { error: 'Error al desactivar el proveedor' },
-          { status: 500 }
+          { error: 'Proveedor no encontrado' },
+          { status: 404 }
         );
       }
 
@@ -249,16 +300,18 @@ export async function DELETE(
     }
 
     // Si no hay documentos relacionados, eliminar completamente
-    const { error: deleteError } = await supabase
-      .from('suppliers')
-      .delete()
-      .eq('supplier_id', id);
+    const deleteQuery = `
+      DELETE FROM suppliers 
+      WHERE supplier_id = $1
+      RETURNING *
+    `;
 
-    if (deleteError) {
-      console.error(`❌ [Supplier Delete] Error en eliminación:`, deleteError);
+    const deleteResult = await pgClient.query<Supplier>(deleteQuery, [id]);
+
+    if (deleteResult.error || !deleteResult.data || deleteResult.data.length === 0) {
       return NextResponse.json(
-        { error: 'Error al eliminar el proveedor' },
-        { status: 500 }
+        { error: 'Proveedor no encontrado' },
+        { status: 404 }
       );
     }
 
