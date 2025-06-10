@@ -1,45 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import AuditService, { AuditAction, AuditEntityType } from '@/services/audit.service';
+import { memoryDB } from '@/lib/memory-db';
 
 export const dynamic = 'force-dynamic';
-
-// Datos mock para desarrollo
-const mockAuditLogs = [
-  {
-    id: 1,
-    user_id: 'demo-user',
-    action: 'DOCUMENT_UPLOAD',
-    resource_type: 'document',
-    resource_id: 'doc-001',
-    details: { filename: 'factura_ejemplo.pdf', size: 125340 },
-    ip_address: '192.168.1.100',
-    user_agent: 'Mozilla/5.0 Chrome/91.0',
-    timestamp: '2025-06-06T10:30:00.000Z'
-  },
-  {
-    id: 2,
-    user_id: 'demo-user',
-    action: 'DOCUMENT_PROCESSING',
-    resource_type: 'document',
-    resource_id: 'doc-001',
-    details: { status: 'completed', processing_time: 1250, ocr_service: 'mistral' },
-    ip_address: '192.168.1.100',
-    user_agent: 'Mozilla/5.0 Chrome/91.0',
-    timestamp: '2025-06-06T10:31:00.000Z'
-  },
-  {
-    id: 3,
-    user_id: 'demo-user',
-    action: 'DATA_EXPORT',
-    resource_type: 'export',
-    details: { export_type: 'CSV', document_count: 5, format: 'csv' },
-    ip_address: '192.168.1.100',
-    user_agent: 'Mozilla/5.0 Chrome/91.0',
-    timestamp: '2025-06-06T09:15:00.000Z'
-  }
-];
 
 export async function GET(request: NextRequest) {
   try {
@@ -64,8 +28,8 @@ export async function GET(request: NextRequest) {
     
     // Extraer parámetros de filtrado
     const userId = searchParams.get('userId') || undefined;
-    const action = searchParams.get('action') as AuditAction || undefined;
-    const entityType = searchParams.get('entityType') as AuditEntityType || undefined;
+    const action = searchParams.get('action') || undefined;
+    const entityType = searchParams.get('entityType') || undefined;
     const entityId = searchParams.get('entityId') || undefined;
     const startDate = searchParams.get('startDate') ? new Date(searchParams.get('startDate')!) : undefined;
     const endDate = searchParams.get('endDate') ? new Date(searchParams.get('endDate')!) : undefined;
@@ -74,37 +38,61 @@ export async function GET(request: NextRequest) {
     
     const offset = (page - 1) * limit;
 
-    // Obtener logs con filtros
-    const logs = await AuditService.getLogs({
+    console.log('🔍 [API Audit] Obteniendo logs de auditoría con filtros:', {
       userId,
       action,
       entityType,
       entityId,
       startDate,
       endDate,
-      limit,
-      offset
+      page,
+      limit
     });
 
-    // Obtener count total para paginación
-    const totalLogs = await AuditService.getLogs({
-      userId,
-      action,
-      entityType,
-      entityId,
-      startDate,
-      endDate,
-      limit: 999999, // Para contar todos
-      offset: 0
-    });
+    // Obtener logs con filtros
+    const filters: any = {};
+    if (entityType) filters.entity_type = entityType;
+    if (entityId) filters.entity_id = entityId;
+
+    let allLogs = await memoryDB.getAuditLogs(filters);
+
+    // Aplicar filtros adicionales
+    if (userId) {
+      allLogs = allLogs.filter(log => log.user_id === userId);
+    }
+    if (action) {
+      allLogs = allLogs.filter(log => log.action === action);
+    }
+    if (startDate) {
+      allLogs = allLogs.filter(log => new Date(log.timestamp) >= startDate);
+    }
+    if (endDate) {
+      allLogs = allLogs.filter(log => new Date(log.timestamp) <= endDate);
+    }
+
+    // Calcular paginación
+    const total = allLogs.length;
+    const paginatedLogs = allLogs.slice(offset, offset + limit);
+
+    // Formatear logs para la respuesta
+    const formattedLogs = paginatedLogs.map(log => ({
+      id: log.log_id,
+      user_id: log.user_id,
+      action: log.action,
+      resource_type: log.entity_type,
+      resource_id: log.entity_id,
+      details: log.changes,
+      timestamp: log.timestamp,
+      notes: log.notes
+    }));
 
     // Registrar acceso a logs de auditoría
-    await AuditService.logFromRequest(request, {
-      userId: session.user?.id || 'unknown',
-      action: AuditAction.READ,
-      entityType: AuditEntityType.SYSTEM,
-      entityId: 'audit_logs',
-      metadata: {
+    await memoryDB.createAuditLog({
+      entity_type: 'system',
+      entity_id: 'audit_logs',
+      action: 'read',
+      user_id: session.user?.id || 'unknown',
+      changes: {
         filters: {
           userId,
           action,
@@ -113,24 +101,29 @@ export async function GET(request: NextRequest) {
           startDate,
           endDate
         },
-        pagination: { page, limit },
-        source: 'audit_viewer'
-      }
+        pagination: { page, limit }
+      },
+      notes: 'Acceso a logs de auditoría'
     });
+
+    console.log(`✅ [API Audit] Retornando ${formattedLogs.length} logs de ${total} totales`);
 
     return NextResponse.json({
       success: true,
-      logs,
-      total: totalLogs.length,
+      logs: formattedLogs,
+      total,
       page,
       limit,
-      totalPages: Math.ceil(totalLogs.length / limit)
+      totalPages: Math.ceil(total / limit)
     });
 
-  } catch (error) {
-    console.error('Error fetching audit logs:', error);
+  } catch (error: any) {
+    console.error('❌ [API Audit] Error obteniendo logs:', error);
     return NextResponse.json(
-      { error: 'Error interno del servidor' },
+      { 
+        error: 'Error interno del servidor',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      },
       { status: 500 }
     );
   }
@@ -139,35 +132,102 @@ export async function GET(request: NextRequest) {
 // Endpoint para obtener estadísticas de auditoría
 export async function POST(request: NextRequest) {
   try {
-    console.log('📊 [API Audit] Obteniendo estadísticas de auditoría (modo desarrollo)');
+    // Verificar autenticación
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json(
+        { error: 'No autorizado' },
+        { status: 401 }
+      );
+    }
+
+    // Solo administradores pueden ver estadísticas
+    if (session.user?.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Acceso denegado' },
+        { status: 403 }
+      );
+    }
+
+    console.log('📊 [API Audit] Obteniendo estadísticas de auditoría');
     
-    const mockStats = {
-      total_actions: mockAuditLogs.length,
-      unique_users: 1,
-      actions_last_7_days: 3,
-      action_breakdown: {
-        'DOCUMENT_UPLOAD': 1,
-        'DOCUMENT_PROCESSING': 1,
-        'DATA_EXPORT': 1
-      },
-      most_common_action: 'DOCUMENT_UPLOAD',
-      stats_period: 'last_30_days'
+    const body = await request.json();
+    const { period = 'last_30_days' } = body;
+
+    // Obtener todos los logs
+    const allLogs = await memoryDB.getAuditLogs();
+
+    // Calcular fecha límite según el período
+    const now = new Date();
+    const periodStart = new Date();
+    
+    switch (period) {
+      case 'last_7_days':
+        periodStart.setDate(now.getDate() - 7);
+        break;
+      case 'last_30_days':
+        periodStart.setDate(now.getDate() - 30);
+        break;
+      case 'last_90_days':
+        periodStart.setDate(now.getDate() - 90);
+        break;
+      default:
+        periodStart.setFullYear(now.getFullYear() - 1);
+    }
+
+    // Filtrar logs por período
+    const periodLogs = allLogs.filter(log => new Date(log.timestamp) >= periodStart);
+
+    // Calcular estadísticas
+    const actionBreakdown: Record<string, number> = {};
+    const userActivity: Record<string, number> = {};
+    const entityBreakdown: Record<string, number> = {};
+
+    periodLogs.forEach(log => {
+      // Contar por acción
+      actionBreakdown[log.action] = (actionBreakdown[log.action] || 0) + 1;
+      
+      // Contar por usuario
+      if (log.user_id) {
+        userActivity[log.user_id] = (userActivity[log.user_id] || 0) + 1;
+      }
+      
+      // Contar por tipo de entidad
+      entityBreakdown[log.entity_type] = (entityBreakdown[log.entity_type] || 0) + 1;
+    });
+
+    // Encontrar la acción más común
+    const mostCommonAction = Object.entries(actionBreakdown)
+      .sort(([, a], [, b]) => b - a)[0]?.[0] || 'none';
+
+    const stats = {
+      total_actions: periodLogs.length,
+      unique_users: Object.keys(userActivity).length,
+      actions_last_7_days: allLogs.filter(log => {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        return new Date(log.timestamp) >= sevenDaysAgo;
+      }).length,
+      action_breakdown: actionBreakdown,
+      entity_breakdown: entityBreakdown,
+      most_common_action: mostCommonAction,
+      stats_period: period,
+      user_activity: userActivity
     };
 
     console.log('✅ [API Audit] Estadísticas calculadas exitosamente');
 
     return NextResponse.json({
       success: true,
-      data: mockStats,
-      source: 'mock_data',
-      message: 'Datos de desarrollo (Supabase no configurado)'
+      data: stats,
+      source: 'memory_db'
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ [API Audit] Error obteniendo estadísticas:', error);
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Error interno del servidor'
+      error: error.message || 'Error interno del servidor'
     }, { status: 500 });
   }
-} 
+}

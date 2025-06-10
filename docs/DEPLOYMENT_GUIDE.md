@@ -18,7 +18,7 @@
 - Node.js 18+
 - Cuenta de Supabase
 - Cuenta de Vercel o Railway
-- API Keys de Mistral y OpenAI
+- API Key de Mistral AI
 - Código fuente del proyecto
 
 ### **Checklist Pre-Despliegue**
@@ -58,7 +58,7 @@ vercel env add NEXT_PUBLIC_SUPABASE_URL
 vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY
 vercel env add SUPABASE_SERVICE_ROLE_KEY
 vercel env add MISTRAL_API_KEY
-vercel env add OPENAI_API_KEY
+# vercel env add OPENAI_API_KEY # Ya no necesario - solo Mistral AI
 vercel env add NEXTAUTH_SECRET
 vercel env add NEXTAUTH_URL
 ```
@@ -146,7 +146,7 @@ railway variables set NEXT_PUBLIC_SUPABASE_URL=your_url
 railway variables set NEXT_PUBLIC_SUPABASE_ANON_KEY=your_key
 railway variables set SUPABASE_SERVICE_ROLE_KEY=your_service_key
 railway variables set MISTRAL_API_KEY=your_mistral_key
-railway variables set OPENAI_API_KEY=your_openai_key
+# railway variables set OPENAI_API_KEY=your_openai_key # Ya no necesario - solo Mistral AI
 railway variables set NEXTAUTH_SECRET=your_secret
 railway variables set NEXTAUTH_URL=https://your-app.railway.app
 ```
@@ -314,11 +314,11 @@ NODE_ENV=production
 2. Crea una cuenta y obtén API key
 3. Configura límites de uso si es necesario
 
-### **2. OpenAI**
-1. Ve a [platform.openai.com](https://platform.openai.com)
+### **2. Mistral AI (Primario)**
+1. Ve a [console.mistral.ai](https://console.mistral.ai)
 2. Crea una cuenta y obtén API key
 3. Asegúrate de tener créditos disponibles
-4. Configura límites de uso
+4. Configura límites de uso para Document Understanding API
 
 ### **3. Configuración de CORS (Si es necesario)**
 ```javascript

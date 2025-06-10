@@ -2,7 +2,7 @@
 // /app/api/documents/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { documentRepository } from '@/api-ddd/dependencies';
+import { memoryDB } from '@/lib/memory-db';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
@@ -31,48 +31,35 @@ export async function GET(request: NextRequest) {
 
     console.log(`[List Documents] Usuario: ${userId}, Status: ${status}, Type: ${documentType}`);
 
-    // Buscar documentos del usuario
-    // Por ahora usando el método findByJobId como ejemplo
-    // En producción, necesitaríamos un método findByUserId en el repositorio
-    const allDocuments = await documentRepository.findAll?.() || [];
+    // Obtener documentos con filtros
+    const filters: any = {};
+    if (status) filters.status = status;
+    if (documentType) filters.document_type = documentType;
     
-    // Filtrar documentos del usuario
-    const userDocuments = allDocuments.filter(doc => 
-      doc.userId === userId || session?.user?.role?.includes('admin')
-    );
+    const allDocuments = await memoryDB.getAllDocuments(filters);
     
-    // Aplicar filtros adicionales
-    let filteredDocuments = userDocuments;
-    
-    if (status) {
-      filteredDocuments = filteredDocuments.filter(doc => doc.status === status);
+    // Filtrar documentos del usuario (si no es admin)
+    let userDocuments = allDocuments;
+    if (!session?.user?.role?.includes('admin')) {
+      userDocuments = allDocuments.filter(doc => doc.user_id === userId);
     }
-    
-    if (documentType) {
-      filteredDocuments = filteredDocuments.filter(doc => doc.documentType === documentType);
-    }
-    
-    // Ordenar por fecha de carga (más recientes primero)
-    filteredDocuments.sort((a, b) => 
-      b.uploadTimestamp.getTime() - a.uploadTimestamp.getTime()
-    );
     
     // Aplicar paginación
-    const totalCount = filteredDocuments.length;
-    const paginatedDocuments = filteredDocuments.slice(offset, offset + limit);
+    const totalCount = userDocuments.length;
+    const paginatedDocuments = userDocuments.slice(offset, offset + limit);
     
     // Formatear respuesta
     const documents = paginatedDocuments.map(doc => ({
-      jobId: doc.jobId,
-      documentType: doc.documentType,
-      fileName: doc.fileName || 'documento.pdf',
+      jobId: doc.job_id,
+      documentType: doc.document_type,
+      fileName: doc.file_path?.split('/').pop() || 'documento.pdf',
       status: doc.status,
-      uploadDate: doc.uploadTimestamp,
-      emitterName: doc.emitterName,
-      receiverName: doc.receiverName,
-      documentDate: doc.documentDate,
+      uploadDate: doc.upload_timestamp,
+      emitterName: doc.emitter_name,
+      receiverName: doc.receiver_name,
+      documentDate: doc.document_date,
       version: doc.version,
-      hasProcessedData: !!doc.processedJson && Object.keys(doc.processedJson).length > 0
+      hasProcessedData: !!doc.processed_json && Object.keys(doc.processed_json).length > 0
     }));
 
     return NextResponse.json({

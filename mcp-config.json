@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "desktop-commander": {
+      "command": "node",
+      "args": [
+        "/home/dreambular/.nvm/versions/node/v20.19.2/lib/node_modules/@modelcontextprotocol/server-desktop-commander/bin/index.js"
+      ]
+    },
+    "n8n-mcp-server": {
+      "command": "node",
+      "args": [
+        "/home/dreambular/.nvm/versions/node/v20.19.2/lib/node_modules/@n8n-io/mcp-server-n8n/dist/index.js"
+      ],
+      "env": {
+        "N8N_API_KEY": "",
+        "N8N_HOST": "http://localhost:5678"
+      }
+    },
+    "mcp-playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@executeautomation/mcp-playwright"
+      ]
+    }
+  }
+}

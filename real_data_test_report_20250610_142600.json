@@ -1,0 +1,21 @@
+{
+  "timestamp": "2025-06-10T14:26:00.800049",
+  "test_results": {
+    "document_creation": true,
+    "document_upload": true,
+    "document_details": false,
+    "ai_extraction": false,
+    "individual_export": false,
+    "sage_export": false
+  },
+  "success_rate": 33.33333333333333,
+  "documents_tested": [
+    "54b6027b-46b1-4c90-a99c-70990ebe8267"
+  ],
+  "summary": {
+    "total_tests": 6,
+    "passed_tests": 2,
+    "failed_tests": 4,
+    "status": "CRITICAL"
+  }
+}

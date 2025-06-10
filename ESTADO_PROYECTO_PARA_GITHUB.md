@@ -28,8 +28,8 @@
 
 ### **APIs y Integraciones**
 - ✅ **30+ Endpoints**: RESTful APIs completamente funcionales
-- ✅ **Mistral OCR**: Extracción de datos con IA
-- ✅ **GPT-4o**: Validación y estructuración
+- ✅ **Mistral Document AI**: Extracción de datos con Document Understanding API
+- ✅ **Análisis Inteligente**: Sistema de análisis PDF para procesamiento optimizado
 - ✅ **Webhooks**: Sistema de eventos
 - ✅ **Health Check**: Monitoreo de sistema
 
@@ -66,7 +66,7 @@
 
 ### **Configuración Lista**
 - ✅ **PostgreSQL** configurado y funcionando
-- ✅ **Mistral API** configurada y validada
+- ✅ **Mistral Document AI** configurada y validada
 - ✅ **NextJS** optimizado para producción
 - ✅ **TailwindCSS** con diseño profesional
 
@@ -80,7 +80,7 @@
 
 ### **Tecnología Moderna**
 - **Stack Actual**: Next.js 14, TypeScript, PostgreSQL
-- **IA de Vanguardia**: Mistral + GPT-4o
+- **IA de Vanguardia**: Mistral Document AI
 - **UX/UI Profesional**: shadcn/ui + TailwindCSS
 - **Arquitectura Escalable**: DDD + Clean Architecture
 
@@ -125,7 +125,7 @@
 
 **Cuando subas el repositorio, tendrás:**
 - ✅ Sistema de gestión documental empresarial completo
-- ✅ Integración con las mejores IAs del mercado (Mistral + OpenAI)
+- ✅ Integración con Mistral Document AI para procesamiento inteligente
 - ✅ Dashboard profesional y portal de clientes
 - ✅ Base de código limpia, moderna y escalable
 - ✅ Documentación profesional y completa

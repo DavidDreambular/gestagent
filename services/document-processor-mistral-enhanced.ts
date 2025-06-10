@@ -50,10 +50,10 @@ export class EnhancedMistralProcessor {
   constructor() {
     this.mistralApiKey = process.env.MISTRAL_API_KEY || '';
     if (!this.mistralApiKey) {
-      console.error('❌ [MistralEnhanced] MISTRAL_API_KEY no configurada');
+      console.error('[ERROR] [MistralEnhanced] MISTRAL_API_KEY no configurada');
       throw new Error('MISTRAL_API_KEY es requerida para producción');
     }
-    console.log('✅ [MistralEnhanced] Inicializado con API key de producción');
+    console.log('[SUCCESS] [MistralEnhanced] Inicializado con API key de producción');
   }
 
   /**
@@ -75,8 +75,8 @@ export class EnhancedMistralProcessor {
       confidenceThreshold = 0.7
     } = options;
 
-    console.log(`🚀 [MistralEnhanced] Iniciando procesamiento: ${jobId}`);
-    console.log(`📊 [MistralEnhanced] Tamaño: ${(pdfBuffer.length / 1024 / 1024).toFixed(2)}MB`);
+    console.log(`[START] [MistralEnhanced] Iniciando procesamiento: ${jobId}`);
+    console.log(`[INFO] [MistralEnhanced] Tamaño: ${(pdfBuffer.length / 1024 / 1024).toFixed(2)}MB`);
 
     let retryCount = 0;
     let lastError = '';
@@ -84,7 +84,7 @@ export class EnhancedMistralProcessor {
 
     while (retryCount <= this.maxRetries) {
       try {
-        console.log(`🔄 [MistralEnhanced] Intento ${retryCount + 1}/${this.maxRetries + 1}`);
+        console.log(`[RETRY] [MistralEnhanced] Intento ${retryCount + 1}/${this.maxRetries + 1}`);
 
         // Preparar el prompt mejorado
         const enhancedPrompt = this.buildEnhancedPrompt(detectMultipleInvoices, enhancedExtraction);
@@ -98,7 +98,7 @@ export class EnhancedMistralProcessor {
           throw new Error('Mistral no pudo extraer texto del documento');
         }
 
-        console.log(`✅ [MistralEnhanced] Mistral procesó documento en ${mistralEndTime - mistralStartTime}ms`);
+        console.log(`[SUCCESS] [MistralEnhanced] Mistral procesó documento en ${mistralEndTime - mistralStartTime}ms`);
 
         // Procesar y validar datos extraídos
         const processedData = await this.processExtractedData(extractedText, jobId);
@@ -108,12 +108,12 @@ export class EnhancedMistralProcessor {
         
         if (confidence < confidenceThreshold) {
           warnings.push(`Confianza baja detectada: ${(confidence * 100).toFixed(1)}%`);
-          console.warn(`⚠️ [MistralEnhanced] Confianza baja: ${(confidence * 100).toFixed(1)}%`);
+          console.warn(`[WARNING] [MistralEnhanced] Confianza baja: ${(confidence * 100).toFixed(1)}%`);
         }
 
         // Contar facturas detectadas
         const invoiceCount = this.countDetectedInvoices(processedData);
-        console.log(`📊 [MistralEnhanced] Facturas detectadas: ${invoiceCount}`);
+        console.log(`[INFO] [MistralEnhanced] Facturas detectadas: ${invoiceCount}`);
 
         const endTime = Date.now();
         const totalTime = endTime - startTime;
@@ -129,7 +129,7 @@ export class EnhancedMistralProcessor {
           document_pages: this.estimatePages(pdfBuffer.length)
         };
 
-        console.log(`✅ [MistralEnhanced] Completado en ${totalTime}ms (confianza: ${(confidence * 100).toFixed(1)}%)`);
+        console.log(`[SUCCESS] [MistralEnhanced] Completado en ${totalTime}ms (confianza: ${(confidence * 100).toFixed(1)}%)`);
 
         return {
           success: true,
@@ -144,11 +144,11 @@ export class EnhancedMistralProcessor {
         retryCount++;
         lastError = error.message || 'Error desconocido';
         
-        console.error(`❌ [MistralEnhanced] Error en intento ${retryCount}: ${lastError}`);
+        console.error(`[ERROR] [MistralEnhanced] Error en intento ${retryCount}: ${lastError}`);
 
         // Si es error 401 (Unauthorized), es crítico para producción
         if (error.message.includes('401') || error.message.includes('Unauthorized')) {
-          console.error('❌ [MistralEnhanced] API Key inválida o expirada - CRÍTICO PARA PRODUCCIÓN');
+          console.error('[ERROR] [MistralEnhanced] API Key inválida o expirada - CRÍTICO PARA PRODUCCIÓN');
           console.error('   Verifique su API key de Mistral en variables de entorno');
           lastError = 'API Key de Mistral inválida o expirada';
           break; // Salir del loop de reintentos
@@ -164,7 +164,7 @@ export class EnhancedMistralProcessor {
 
     // Si llegamos aquí, todos los intentos fallaron
     const endTime = Date.now();
-    console.error(`❌ [MistralEnhanced] Todos los intentos fallaron para ${jobId}`);
+    console.error(`[ERROR] [MistralEnhanced] Todos los intentos fallaron para ${jobId}`);
 
     return {
       success: false,
@@ -270,12 +270,12 @@ VALIDACIONES:
    */
   private async extractTextWithMistral(pdfBuffer: Buffer, prompt: string): Promise<string> {
     try {
-      console.log(`🔄 [MistralEnhanced] Subiendo archivo a Mistral Files API...`);
+      console.log(`[UPLOAD] [MistralEnhanced] Subiendo archivo a Mistral Files API...`);
       
       // Paso 1: Subir el archivo usando Files API
       const uploadResponse = await this.uploadFile(pdfBuffer);
       
-      console.log(`🔄 [MistralEnhanced] Procesando con Document Understanding (${this.model})...`);
+      console.log(`[PROCESS] [MistralEnhanced] Procesando con Document Understanding (${this.model})...`);
       
       // Paso 2: Usar Document Understanding con el archivo subido
       const requestBody = {
@@ -312,7 +312,7 @@ VALIDACIONES:
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ [MistralEnhanced] Document Understanding error ${response.status}: ${errorText}`);
+        console.error(`[ERROR] [MistralEnhanced] Document Understanding error ${response.status}: ${errorText}`);
         throw new Error(`Document Understanding API error ${response.status}: ${errorText}`);
       }
 
@@ -325,7 +325,7 @@ VALIDACIONES:
       }
 
     } catch (error: any) {
-      console.error('❌ [MistralEnhanced] Error con Document Understanding:', error);
+      console.error('[ERROR] [MistralEnhanced] Error con Document Understanding:', error);
       throw new Error(`Error en Document Understanding: ${error.message}`);
     }
   }
@@ -351,7 +351,7 @@ VALIDACIONES:
 
       if (!uploadResponse.ok) {
         const errorText = await uploadResponse.text();
-        console.error(`❌ [MistralEnhanced] Upload error ${uploadResponse.status}: ${errorText}`);
+        console.error(`[ERROR] [MistralEnhanced] Upload error ${uploadResponse.status}: ${errorText}`);
         throw new Error(`Files API upload error ${uploadResponse.status}: ${errorText}`);
       }
 
@@ -368,7 +368,7 @@ VALIDACIONES:
 
       if (!signedUrlResponse.ok) {
         const errorText = await signedUrlResponse.text();
-        console.error(`❌ [MistralEnhanced] Signed URL error ${signedUrlResponse.status}: ${errorText}`);
+        console.error(`[ERROR] [MistralEnhanced] Signed URL error ${signedUrlResponse.status}: ${errorText}`);
         throw new Error(`Signed URL error ${signedUrlResponse.status}: ${errorText}`);
       }
 
@@ -380,7 +380,7 @@ VALIDACIONES:
       };
 
     } catch (error: any) {
-      console.error('❌ [MistralEnhanced] Error subiendo archivo:', error);
+      console.error('[ERROR] [MistralEnhanced] Error subiendo archivo:', error);
       throw new Error(`Upload error: ${error.message}`);
     }
   }
@@ -393,31 +393,121 @@ VALIDACIONES:
       // Limpiar el texto extraído
       let cleanedText = extractedText.trim();
       
-      // Buscar JSON en el texto
-      const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        cleanedText = jsonMatch[0];
+      // Primero, intentar extraer JSON de bloque markdown
+      console.log(`[SEARCH] [MistralEnhanced] Buscando JSON en texto de ${cleanedText.length} caracteres`);
+      
+      const markdownJsonMatch = cleanedText.match(/```json\s*([\s\S]*?)\s*```/);
+      if (markdownJsonMatch && markdownJsonMatch[1]) {
+        cleanedText = markdownJsonMatch[1].trim();
+        console.log(`[EXTRACT] [MistralEnhanced] JSON extraído de bloque markdown (${cleanedText.length} chars)`);
+      } else {
+        // Buscar JSON directo en el texto
+        const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          cleanedText = jsonMatch[0];
+          console.log(`[EXTRACT] [MistralEnhanced] JSON extraído directamente (${cleanedText.length} chars)`);
+        } else {
+          console.log(`[WARNING] [MistralEnhanced] No se encontró JSON válido en la respuesta`);
+        }
       }
+      
+      // Log del JSON que intentaremos parsear
+      console.log(`[DEBUG] [MistralEnhanced] JSON a parsear (primeros 200 chars): "${cleanedText.substring(0, 200)}..."`);
+      console.log(`[DEBUG] [MistralEnhanced] JSON a parsear (últimos 200 chars): "...${cleanedText.substring(Math.max(0, cleanedText.length - 200))}"`);
 
       // Intentar parsear como JSON
       let parsedData;
       try {
         parsedData = JSON.parse(cleanedText);
       } catch (parseError) {
-        console.warn(`⚠️ [MistralEnhanced] Error parseando JSON, intentando limpiar...`);
+        console.warn(`[WARNING] [MistralEnhanced] Error parseando JSON, intentando limpiar...`);
+        console.log(`[DEBUG] [MistralEnhanced] Texto problemático (primeros 500 chars): "${cleanedText.substring(0, 500)}"`);
         
-        // Intentar limpiar caracteres problemáticos
-        cleanedText = cleanedText
-          .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Caracteres de control
-          .replace(/,(\s*[}\]])/g, '$1') // Comas colgantes
-          .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":'); // Claves sin comillas
+        // Intentar arreglar JSON truncado
+        if (cleanedText.includes('"detected_invoices"') && !cleanedText.trim().endsWith('}')) {
+          console.log(`[FIX] [MistralEnhanced] JSON parece truncado, intentando reparar...`);
+          
+          // Contar llaves abiertas vs cerradas
+          const openBraces = (cleanedText.match(/{/g) || []).length;
+          const closeBraces = (cleanedText.match(/}/g) || []).length;
+          const openBrackets = (cleanedText.match(/\[/g) || []).length;
+          const closeBrackets = (cleanedText.match(/\]/g) || []).length;
+          
+          // Añadir llaves/corchetes faltantes
+          let repairedJson = cleanedText;
+          
+          // Cerrar arrays abiertos
+          const missingBrackets = openBrackets - closeBrackets;
+          for (let i = 0; i < missingBrackets; i++) {
+            repairedJson += ']';
+          }
+          
+          // Cerrar objetos abiertos
+          const missingBraces = openBraces - closeBraces;
+          for (let i = 0; i < missingBraces; i++) {
+            repairedJson += '}';
+          }
+          
+          try {
+            parsedData = JSON.parse(repairedJson);
+            console.log(`[SUCCESS] [MistralEnhanced] JSON reparado exitosamente`);
+          } catch (repairError) {
+            // Si falla la reparación, intentar extracción manual
+            cleanedText = repairedJson;
+          }
+        }
         
-        parsedData = JSON.parse(cleanedText);
+        if (!parsedData) {
+          // Intentar limpiar caracteres problemáticos
+          cleanedText = cleanedText
+            .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Caracteres de control
+            .replace(/,(\s*[}\]])/g, '$1') // Comas colgantes
+            .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":'); // Claves sin comillas
+          
+          try {
+            parsedData = JSON.parse(cleanedText);
+          } catch (secondError) {
+            console.error(`[ERROR] [MistralEnhanced] JSON parsing failed even after cleaning. Original text length: ${extractedText.length}`);
+            console.log(`[DEBUG] [MistralEnhanced] Raw response (first 1000 chars): "${extractedText.substring(0, 1000)}"`);
+            
+            // Intentar extraer todas las facturas manualmente del texto completo
+            const extractedInvoices = this.extractAllInvoicesFromText(extractedText);
+            
+            parsedData = {
+              detected_invoices: extractedInvoices,
+              confidence: extractedInvoices.length > 0 ? 0.7 : 0.1,
+              processing_notes: [
+                `JSON parsing failed: ${secondError.message}`, 
+                `Extracted ${extractedInvoices.length} invoices manually from text`,
+                `Raw text length: ${extractedText.length}`
+              ],
+              fallback_extraction: true
+            };
+          }
+        }
       }
 
       // Validar estructura mínima
       if (!parsedData.detected_invoices) {
         parsedData.detected_invoices = [];
+      }
+
+      // Normalizar campos nif a nif_cif para compatibilidad
+      if (parsedData.detected_invoices && Array.isArray(parsedData.detected_invoices)) {
+        parsedData.detected_invoices.forEach((invoice: any) => {
+          // Normalizar proveedor
+          if (invoice.supplier) {
+            if (invoice.supplier.nif && !invoice.supplier.nif_cif) {
+              invoice.supplier.nif_cif = invoice.supplier.nif;
+            }
+          }
+          // Normalizar cliente
+          if (invoice.customer) {
+            if (invoice.customer.nif && !invoice.customer.nif_cif) {
+              invoice.customer.nif_cif = invoice.customer.nif;
+            }
+          }
+        });
       }
 
       // Normalizar fechas
@@ -429,7 +519,7 @@ VALIDACIONES:
       return parsedData;
 
     } catch (error: any) {
-      console.error(`❌ [MistralEnhanced] Error procesando datos para ${jobId}:`, error);
+      console.error(`[ERROR] [MistralEnhanced] Error procesando datos para ${jobId}:`, error);
       
       // Crear estructura básica si falla el parsing
       return {
@@ -439,6 +529,269 @@ VALIDACIONES:
         processing_notes: [`Error procesando: ${error.message}`],
         raw_text: extractedText.substring(0, 1000) // Primeros 1000 caracteres
       };
+    }
+  }
+
+  /**
+   * Extrae TODAS las facturas del texto cuando falla el JSON
+   */
+  private extractAllInvoicesFromText(text: string): any[] {
+    try {
+      console.log(`[MANUAL] [MistralEnhanced] Buscando múltiples facturas en el texto`);
+      
+      const invoices: any[] = [];
+      
+      // Buscar todos los números de factura
+      const invoiceMatches = text.matchAll(/"invoice_number":\s*"([^"]+)"/g);
+      const invoiceNumbers = Array.from(invoiceMatches).map(match => match[1]);
+      
+      console.log(`[MANUAL] [MistralEnhanced] Encontrados ${invoiceNumbers.length} números de factura`);
+      
+      // Si hay múltiples facturas, intentar extraer cada una
+      if (invoiceNumbers.length > 1) {
+        // Dividir el texto por cada factura
+        const invoiceBlocks = text.split(/},\s*{/).filter(block => block.includes('invoice_number'));
+        
+        invoiceBlocks.forEach((block, index) => {
+          const invoice = this.extractSingleInvoiceFromBlock(block);
+          if (invoice) {
+            invoices.push(invoice);
+          }
+        });
+      } else if (invoiceNumbers.length === 1) {
+        // Solo una factura
+        const invoice = this.extractSingleInvoiceFromBlock(text);
+        if (invoice) {
+          invoices.push(invoice);
+        }
+      }
+      
+      // Si no se encontraron facturas con el método anterior, intentar otro enfoque
+      if (invoices.length === 0) {
+        const singleInvoice = this.extractInvoiceFromText(text);
+        if (singleInvoice) {
+          invoices.push(singleInvoice);
+        }
+      }
+      
+      console.log(`[SUCCESS] [MistralEnhanced] Extraídas ${invoices.length} facturas manualmente`);
+      return invoices;
+      
+    } catch (error) {
+      console.error(`[ERROR] [MistralEnhanced] Error extrayendo múltiples facturas:`, error);
+      return [];
+    }
+  }
+  
+  /**
+   * Extrae una factura de un bloque de texto
+   */
+  private extractSingleInvoiceFromBlock(block: string): any | null {
+    try {
+      const invoice: any = {};
+      
+      // Extraer campos básicos
+      const patterns = {
+        invoice_number: /"invoice_number":\s*"([^"]+)"/,
+        issue_date: /"issue_date":\s*"([^"]+)"/,
+        due_date: /"due_date":\s*"([^"]+)"/,
+        total_amount: /"total_amount":\s*([0-9.]+)/,
+        tax_amount: /"tax_amount":\s*([0-9.]+)/,
+        base_amount: /"base_amount":\s*([0-9.]+)/,
+        currency: /"currency":\s*"([^"]+)"/,
+        payment_method: /"payment_method":\s*"([^"]+)"/
+      };
+      
+      // Aplicar patrones
+      for (const [key, pattern] of Object.entries(patterns)) {
+        const match = block.match(pattern);
+        if (match) {
+          if (key.includes('amount')) {
+            invoice[key] = parseFloat(match[1]);
+          } else {
+            invoice[key] = match[1];
+          }
+        }
+      }
+      
+      // Extraer proveedor
+      const supplierMatch = block.match(/"supplier":\s*{([^}]+)}/);
+      if (supplierMatch) {
+        invoice.supplier = this.extractEntityFromBlock(supplierMatch[1]);
+      }
+      
+      // Extraer cliente
+      const customerMatch = block.match(/"customer":\s*{([^}]+)}/);
+      if (customerMatch) {
+        invoice.customer = this.extractEntityFromBlock(customerMatch[1]);
+      }
+      
+      // Extraer líneas de factura si existen
+      const itemsMatch = block.match(/"line_items":\s*\[([^\]]+)\]/);
+      if (itemsMatch) {
+        invoice.line_items = this.extractLineItems(itemsMatch[1]);
+      }
+      
+      return Object.keys(invoice).length > 0 ? invoice : null;
+      
+    } catch (error) {
+      console.error(`[ERROR] [MistralEnhanced] Error extrayendo factura del bloque:`, error);
+      return null;
+    }
+  }
+  
+  /**
+   * Extrae datos de una entidad (proveedor/cliente)
+   */
+  private extractEntityFromBlock(block: string): any {
+    const entity: any = {};
+    
+    const patterns = {
+      name: /"name":\s*"([^"]+)"/,
+      nif: /"nif":\s*"([^"]+)"/,
+      address: /"address":\s*"([^"]+)"/,
+      city: /"city":\s*"([^"]+)"/,
+      postal_code: /"postal_code":\s*"([^"]+)"/,
+      commercial_name: /"commercial_name":\s*"([^"]+)"/
+    };
+    
+    for (const [key, pattern] of Object.entries(patterns)) {
+      const match = block.match(pattern);
+      if (match) {
+        entity[key] = match[1];
+        // Si es nif, también agregarlo como nif_cif para compatibilidad
+        if (key === 'nif') {
+          entity.nif_cif = match[1];
+        }
+      }
+    }
+    
+    return entity;
+  }
+  
+  /**
+   * Extrae líneas de factura
+   */
+  private extractLineItems(block: string): any[] {
+    try {
+      const items: any[] = [];
+      
+      // Dividir por elementos del array
+      const itemBlocks = block.split(/},\s*{/);
+      
+      itemBlocks.forEach(itemBlock => {
+        const item: any = {};
+        
+        const patterns = {
+          description: /"description":\s*"([^"]+)"/,
+          quantity: /"quantity":\s*([0-9.]+)/,
+          unit_price: /"unit_price":\s*([0-9.]+)/,
+          tax_rate: /"tax_rate":\s*([0-9.]+)/,
+          amount: /"amount":\s*([0-9.]+)/
+        };
+        
+        for (const [key, pattern] of Object.entries(patterns)) {
+          const match = itemBlock.match(pattern);
+          if (match) {
+            if (key === 'description') {
+              item[key] = match[1];
+            } else {
+              item[key] = parseFloat(match[1]);
+            }
+          }
+        }
+        
+        if (Object.keys(item).length > 0) {
+          items.push(item);
+        }
+      });
+      
+      return items;
+      
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * Extrae datos de factura manualmente del texto cuando falla el JSON
+   */
+  private extractInvoiceFromText(text: string): any | null {
+    try {
+      console.log(`[MANUAL] [MistralEnhanced] Intentando extracción manual de factura`);
+      
+      const invoice: any = {};
+      
+      // Extraer número de factura
+      const invoiceNumberMatch = text.match(/"invoice_number":\s*"([^"]+)"/);
+      if (invoiceNumberMatch) {
+        invoice.invoice_number = invoiceNumberMatch[1];
+      }
+      
+      // Extraer fechas
+      const issueDateMatch = text.match(/"issue_date":\s*"([^"]+)"/);
+      if (issueDateMatch) {
+        invoice.issue_date = issueDateMatch[1];
+      }
+      
+      const dueDateMatch = text.match(/"due_date":\s*"([^"]+)"/);
+      if (dueDateMatch) {
+        invoice.due_date = dueDateMatch[1];
+      }
+      
+      // Extraer proveedor
+      const supplierNameMatch = text.match(/"supplier":\s*{[^}]*"name":\s*"([^"]+)"/);
+      const supplierNifMatch = text.match(/"supplier":\s*{[^}]*"nif":\s*"([^"]+)"/);
+      const supplierAddressMatch = text.match(/"supplier":\s*{[^}]*"address":\s*"([^"]+)"/);
+      
+      if (supplierNameMatch || supplierNifMatch) {
+        invoice.supplier = {};
+        if (supplierNameMatch) invoice.supplier.name = supplierNameMatch[1];
+        if (supplierNifMatch) {
+          invoice.supplier.nif_cif = supplierNifMatch[1]; // Usar nif_cif para compatibilidad
+          invoice.supplier.nif = supplierNifMatch[1]; // Mantener también nif por retrocompatibilidad
+        }
+        if (supplierAddressMatch) invoice.supplier.address = supplierAddressMatch[1];
+      }
+      
+      // Extraer cliente
+      const customerNameMatch = text.match(/"customer":\s*{[^}]*"name":\s*"([^"]+)"/);
+      const customerNifMatch = text.match(/"customer":\s*{[^}]*"nif":\s*"([^"]+)"/);
+      const customerAddressMatch = text.match(/"customer":\s*{[^}]*"address":\s*"([^"]+)"/);
+      
+      if (customerNameMatch || customerNifMatch) {
+        invoice.customer = {};
+        if (customerNameMatch) invoice.customer.name = customerNameMatch[1];
+        if (customerNifMatch) {
+          invoice.customer.nif_cif = customerNifMatch[1]; // Usar nif_cif para compatibilidad
+          invoice.customer.nif = customerNifMatch[1]; // Mantener también nif por retrocompatibilidad
+        }
+        if (customerAddressMatch) invoice.customer.address = customerAddressMatch[1];
+      }
+      
+      // Extraer total
+      const totalAmountMatch = text.match(/"total_amount":\s*([0-9]+\.?[0-9]*)/);
+      if (totalAmountMatch) {
+        invoice.total_amount = parseFloat(totalAmountMatch[1]);
+      }
+      
+      // Verificar si encontramos datos suficientes
+      if (invoice.invoice_number || invoice.supplier?.name || invoice.customer?.name || invoice.total_amount) {
+        console.log(`[SUCCESS] [MistralEnhanced] Extracción manual exitosa:`, {
+          invoice_number: invoice.invoice_number,
+          supplier: invoice.supplier?.name,
+          customer: invoice.customer?.name,
+          total: invoice.total_amount
+        });
+        return invoice;
+      }
+      
+      console.log(`[WARNING] [MistralEnhanced] No se encontraron datos suficientes en extracción manual`);
+      return null;
+      
+    } catch (error) {
+      console.error(`[ERROR] [MistralEnhanced] Error en extracción manual:`, error);
+      return null;
     }
   }
 

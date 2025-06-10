@@ -2,7 +2,7 @@
 // /app/api/documents/list/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import pgClient from '@/lib/postgresql-client';
+import { dbAdapter } from '@/lib/db-adapter';
 
 // Datos de ejemplo para fallback
 const EXAMPLE_DOCUMENTS = [
@@ -43,7 +43,7 @@ const EXAMPLE_DOCUMENTS = [
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
-  console.log('[List Documents] Iniciando consulta de documentos con PostgreSQL');
+  console.log('[List Documents] Iniciando consulta de documentos con dbAdapter');
   
   const { searchParams } = new URL(req.url);
   const status = searchParams.get('status');
@@ -54,19 +54,35 @@ export async function GET(req: NextRequest) {
   console.log(`[List Documents] Parámetros: status=${status}, type=${type}, limit=${limit}, offset=${offset}`);
 
   try {
-    // Usar el cliente PostgreSQL existente
-    const { data, error } = await pgClient.getDocuments({
-      status: status === 'all' ? undefined : status || undefined,
-      type: type === 'all' ? undefined : type || undefined,
-      limit,
-      offset
-    });
+    // Inicializar dbAdapter
+    await dbAdapter.initialize();
+    
+    // Construir query base
+    let query = `
+      SELECT job_id, document_type, processed_json,
+             upload_timestamp, status, emitter_name,
+             receiver_name, document_date
+      FROM documents
+      WHERE status != 'deleted'
+    `;
+    const params: any[] = [];
 
-    if (error) {
-      console.log('[List Documents] Error en consulta PostgreSQL:', error);
-      
-      // Si hay error de PostgreSQL, usar datos de ejemplo
-      console.log('⚠️ [List Documents] PostgreSQL no disponible, usando datos de ejemplo');
+    if (status && status !== 'all') {
+      query += ` AND status = $${params.length + 1}`;
+      params.push(status);
+    }
+
+    if (type && type !== 'all') {
+      query += ` AND document_type = $${params.length + 1}`;
+      params.push(type);
+    }
+
+    query += ` ORDER BY upload_timestamp DESC LIMIT ${limit} OFFSET ${offset}`;
+
+    const result = await dbAdapter.query(query, params);
+
+    if (!result.rows) {
+      console.log('[List Documents] No se encontraron documentos, usando datos de ejemplo');
       
       let filteredDocs = [...EXAMPLE_DOCUMENTS];
       
@@ -94,30 +110,35 @@ export async function GET(req: NextRequest) {
         },
         debug: {
           mode: 'example_data',
-          reason: 'postgresql_unavailable',
+          reason: 'no_documents_found',
           query_params: { status, type, limit, offset }
         }
       });
     }
 
-    console.log(`[List Documents] Documentos encontrados desde PostgreSQL: ${data?.length || 0}`);
+    const documents = result.rows;
+    console.log(`[List Documents] Documentos encontrados: ${documents.length}`);
 
-    // Obtener conteo total para paginación
-    const totalQuery = await pgClient.query(
-      'SELECT COUNT(*) as total FROM documents WHERE 1=1' + 
-      (status && status !== 'all' ? ' AND status = $1' : '') +
-      (type && type !== 'all' ? ` AND document_type = $${status && status !== 'all' ? '2' : '1'}` : ''),
-      [
-        ...(status && status !== 'all' ? [status] : []),
-        ...(type && type !== 'all' ? [type] : [])
-      ].filter(Boolean)
-    );
+    // Obtener conteo total
+    let countQuery = 'SELECT COUNT(*) as total FROM documents WHERE status != $1';
+    const countParams = ['deleted'];
 
-    const totalCount = totalQuery.data?.[0]?.total || data?.length || 0;
+    if (status && status !== 'all') {
+      countQuery += ` AND status = $${countParams.length + 1}`;
+      countParams.push(status);
+    }
+
+    if (type && type !== 'all') {
+      countQuery += ` AND document_type = $${countParams.length + 1}`;
+      countParams.push(type);
+    }
+
+    const totalResult = await dbAdapter.query(countQuery, countParams);
+    const totalCount = totalResult.rows?.[0]?.total || documents.length;
 
     return NextResponse.json({
       success: true,
-      documents: data || [],
+      documents: documents || [],
       total: parseInt(totalCount.toString()),
       pagination: {
         limit,

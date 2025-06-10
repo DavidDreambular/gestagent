@@ -264,8 +264,8 @@ export async function POST(request: NextRequest) {
       if (!existingUser || existingUser.length === 0) {
         console.log('🔄 [API] Creando usuario en PostgreSQL...');
         const { error: userError } = await pgClient.query(
-          'INSERT INTO users (user_id, username, email, role, created_at) VALUES ($1, $2, $3, $4, $5)',
-          [userId, 'dev_user', 'dev@gestagent.local', 'admin', new Date().toISOString()]
+          'INSERT INTO users (user_id, username, email, password_hash, role, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+          [userId, 'dev_user', 'dev@gestagent.local', '$2b$10$defaulthashedpasswordfordev', 'admin', new Date().toISOString()]
         );
 
         if (userError) {

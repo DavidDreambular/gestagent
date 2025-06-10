@@ -1,0 +1,409 @@
+{
+  "timestamp": "2025-06-10T14:00:04.895364",
+  "summary": {
+    "health": false,
+    "auth": true,
+    "database_apis": true,
+    "frontend": true,
+    "mcp": true,
+    "resources": true,
+    "postgresql": false
+  },
+  "success_rate": 71.42857142857143,
+  "detailed_results": [
+    {
+      "endpoint": "/api/health",
+      "method": "GET",
+      "status_code": 404,
+      "success": false,
+      "response_time": 0.067465,
+      "url": "http://localhost:3003/api/health",
+      "text": "<!DOCTYPE html><html id=\"__next_error__\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"preload\" as=\"script\" fetchPriority=\"low\" href=\"/_n..."
+    },
+    {
+      "endpoint": "/api/auth/callback/credentials",
+      "method": "POST",
+      "status_code": 200,
+      "success": true,
+      "response_time": 2.21269,
+      "url": "http://localhost:3003/api/auth/callback/credentials",
+      "text": "<!DOCTYPE html><html lang=\"es\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/css/app/layout.css?v=1749556..."
+    },
+    {
+      "endpoint": "/api/dashboard/stats",
+      "method": "GET",
+      "status_code": 200,
+      "success": true,
+      "response_time": 0.379808,
+      "url": "http://localhost:3003/api/dashboard/stats",
+      "json": {
+        "success": true,
+        "data": {
+          "totalDocuments": 0,
+          "processedToday": 0,
+          "activeSuppliers": 0,
+          "activeCustomers": 0,
+          "completedDocuments": 0,
+          "processingDocuments": 0,
+          "errorDocuments": 0,
+          "totalAmount": "0.00",
+          "successRate": "0",
+          "source": "postgresql_real_data"
+        },
+        "source": "postgresql_real_data",
+        "timestamp": "2025-06-10T11:59:52.518Z"
+      }
+    },
+    {
+      "endpoint": "/api/suppliers",
+      "method": "GET",
+      "status_code": 200,
+      "success": true,
+      "response_time": 0.432681,
+      "url": "http://localhost:3003/api/suppliers",
+      "json": {
+        "success": true,
+        "suppliers": [
+          {
+            "supplier_id": "11e8def9-e123-451b-bc91-400e6e518356",
+            "nif_cif": "A12345678",
+            "name": "Tecnolog\u00eda Avanzada S.A.",
+            "commercial_name": "TechnoAdvance",
+            "address": null,
+            "postal_code": null,
+            "city": "Madrid",
+            "province": null,
+            "country": "Espa\u00f1a",
+            "phone": null,
+            "email": null,
+            "website": null,
+            "contact_person": null,
+            "business_sector": "Servicios",
+            "company_size": "mediana",
+            "status": "active",
+            "notes": null,
+            "created_at": "2025-06-10T11:59:52.944Z",
+            "updated_at": "2025-06-10T11:59:52.944Z",
+            "total_invoices": 0,
+            "total_amount": 0,
+            "last_invoice_date": null,
+            "first_detected_at": "2025-06-10T11:59:52.944Z",
+            "last_updated_from_document": null
+          },
+          {
+            "supplier_id": "9b54ab44-7d27-4e80-b91a-2a5101096a54",
+            "nif_cif": "B87654321",
+            "name": "Suministros Oficina Express",
+            "commercial_name": "OfficeExpress",
+            "address": null,
+            "postal_code": null,
+            "city": "Barcelona",
+            "province": null,
+            "country": "Espa\u00f1a",
+            "phone": null,
+            "email": null,
+            "website": null,
+            "contact_person": null,
+            "business_sector": "Servicios",
+            "company_size": "mediana",
+            "status": "active",
+            "notes": null,
+            "created_at": "2025-06-10T11:59:52.944Z",
+            "updated_at": "2025-06-10T11:59:52.944Z",
+            "total_invoices": 0,
+            "total_amount": 0,
+            "last_invoice_date": null,
+            "first_detected_at": "2025-06-10T11:59:52.944Z",
+            "last_updated_from_document": null
+          },
+          {
+            "supplier_id": "92cd4c93-356f-4153-9e4d-ee23704132af",
+            "nif_cif": "C11223344",
+            "name": "Servicios Contables L\u00f3pez",
+            "commercial_name": "ContaL\u00f3pez",
+            "address": null,
+            "postal_code": null,
+            "city": "Valencia",
+            "province": null,
+            "country": "Espa\u00f1a",
+            "phone": null,
+            "email": null,
+            "website": null,
+            "contact_person": null,
+            "business_sector": "Servicios",
+            "company_size": "mediana",
+            "status": "active",
+            "notes": null,
+            "created_at": "2025-06-10T11:59:52.944Z",
+            "updated_at": "2025-06-10T11:59:52.944Z",
+            "total_invoices": 0,
+            "total_amount": 0,
+            "last_invoice_date": null,
+            "first_detected_at": "2025-06-10T11:59:52.944Z",
+            "last_updated_from_document": null
+          }
+        ],
+        "total": 0,
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "total": 0,
+          "pages": 0
+        },
+        "source": "postgresql"
+      }
+    },
+    {
+      "endpoint": "/api/customers",
+      "method": "GET",
+      "status_code": 200,
+      "success": true,
+      "response_time": 0.409924,
+      "url": "http://localhost:3003/api/customers",
+      "json": {
+        "success": true,
+        "customers": [
+          {
+            "customer_id": "2d8eecb9-121c-4743-b137-886853e4f84d",
+            "nif_cif": "E55667788",
+            "name": "Retail Solutions S.L.",
+            "commercial_name": "RetailSol",
+            "address": null,
+            "postal_code": null,
+            "city": "Sevilla",
+            "province": null,
+            "country": "Espa\u00f1a",
+            "phone": null,
+            "email": null,
+            "website": null,
+            "contact_person": null,
+            "customer_type": "company",
+            "payment_terms": null,
+            "credit_limit": null,
+            "status": "active",
+            "notes": null,
+            "created_at": "2025-06-10T11:59:53.356Z",
+            "updated_at": "2025-06-10T11:59:53.356Z",
+            "total_invoices": 0,
+            "total_amount": 0,
+            "last_invoice_date": null,
+            "first_detected_at": "2025-06-10T11:59:53.356Z",
+            "last_updated_from_document": null
+          },
+          {
+            "customer_id": "d852c030-31e0-43d7-a187-2a920b41a052",
+            "nif_cif": "F44556677",
+            "name": "Restaurante El Buen Sabor",
+            "commercial_name": "El Buen Sabor",
+            "address": null,
+            "postal_code": null,
+            "city": "Granada",
+            "province": null,
+            "country": "Espa\u00f1a",
+            "phone": null,
+            "email": null,
+            "website": null,
+            "contact_person": null,
+            "customer_type": "company",
+            "payment_terms": null,
+            "credit_limit": null,
+            "status": "active",
+            "notes": null,
+            "created_at": "2025-06-10T11:59:53.356Z",
+            "updated_at": "2025-06-10T11:59:53.356Z",
+            "total_invoices": 0,
+            "total_amount": 0,
+            "last_invoice_date": null,
+            "first_detected_at": "2025-06-10T11:59:53.356Z",
+            "last_updated_from_document": null
+          }
+        ],
+        "total": 0,
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "total": 0,
+          "pages": 0
+        },
+        "source": "postgresql"
+      }
+    },
+    {
+      "endpoint": "/api/documents/list",
+      "method": "GET",
+      "status_code": 200,
+      "success": true,
+      "response_time": 0.442691,
+      "url": "http://localhost:3003/api/documents/list",
+      "json": {
+        "success": true,
+        "documents": [],
+        "total": 0,
+        "pagination": {
+          "limit": 20,
+          "offset": 0,
+          "total": 0,
+          "pages": 0
+        },
+        "source": "postgresql"
+      }
+    },
+    {
+      "endpoint": "/api/audit/logs",
+      "method": "GET",
+      "status_code": 401,
+      "success": false,
+      "response_time": 0.475765,
+      "url": "http://localhost:3003/api/audit/logs",
+      "json": {
+        "error": "No autorizado"
+      }
+    },
+    {
+      "endpoint": "/",
+      "method": "GET",
+      "status_code": 200,
+      "success": true,
+      "response_time": 1.254587,
+      "url": "http://localhost:3003/",
+      "text": "<!DOCTYPE html><html lang=\"es\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/css/app/layout.css?v=1749556..."
+    },
+    {
+      "endpoint": "/auth/login",
+      "method": "GET",
+      "status_code": 200,
+      "success": true,
+      "response_time": 0.086282,
+      "url": "http://localhost:3003/auth/login",
+      "text": "<!DOCTYPE html><html lang=\"es\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/css/app/layout.css?v=1749556..."
+    },
+    {
+      "endpoint": "/dashboard",
+      "method": "GET",
+      "status_code": 200,
+      "success": true,
+      "response_time": 2.164128,
+      "url": "http://localhost:3003/dashboard",
+      "text": "<!DOCTYPE html><html lang=\"es\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/css/app/layout.css?v=1749556..."
+    },
+    {
+      "endpoint": "/dashboard/documents",
+      "method": "GET",
+      "status_code": 200,
+      "success": true,
+      "response_time": 2.335758,
+      "url": "http://localhost:3003/dashboard/documents",
+      "text": "<!DOCTYPE html><html lang=\"es\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/css/app/layout.css?v=1749556..."
+    },
+    {
+      "endpoint": "/dashboard/suppliers",
+      "method": "GET",
+      "status_code": 200,
+      "success": true,
+      "response_time": 0.923876,
+      "url": "http://localhost:3003/dashboard/suppliers",
+      "text": "<!DOCTYPE html><html lang=\"es\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/css/app/layout.css?v=1749556..."
+    },
+    {
+      "endpoint": "/dashboard/customers",
+      "method": "GET",
+      "status_code": 200,
+      "success": true,
+      "response_time": 0.626554,
+      "url": "http://localhost:3003/dashboard/customers",
+      "text": "<!DOCTYPE html><html lang=\"es\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/css/app/layout.css?v=1749556..."
+    },
+    {
+      "endpoint": "/dashboard/automation",
+      "method": "GET",
+      "status_code": 200,
+      "success": true,
+      "response_time": 1.388177,
+      "url": "http://localhost:3003/dashboard/automation",
+      "text": "<!DOCTYPE html><html lang=\"es\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/css/app/layout.css?v=1749556..."
+    },
+    {
+      "endpoint": "/api/mcp/execute",
+      "method": "GET",
+      "status_code": 200,
+      "success": true,
+      "response_time": 0.855814,
+      "url": "http://localhost:3003/api/mcp/execute",
+      "json": {
+        "servers": {
+          "desktop-commander": {
+            "description": "Desktop automation and screen capture",
+            "actions": [
+              "capture-screen",
+              "capture-window",
+              "extract-text"
+            ]
+          },
+          "n8n": {
+            "description": "Workflow automation",
+            "actions": [
+              "trigger-workflow",
+              "get-workflow-status",
+              "create-workflow"
+            ]
+          },
+          "playwright": {
+            "description": "Web automation",
+            "actions": [
+              "navigate",
+              "download-document",
+              "extract-table",
+              "login"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "endpoint": "/api/mcp/portal",
+      "method": "GET",
+      "status_code": 200,
+      "success": true,
+      "response_time": 0.816312,
+      "url": "http://localhost:3003/api/mcp/portal",
+      "json": {
+        "portals": {
+          "hacienda": {
+            "name": "Agencia Tributaria",
+            "url": "https://sede.agenciatributaria.gob.es",
+            "documentTypes": [
+              "modelo303",
+              "modelo347",
+              "modelo190"
+            ]
+          },
+          "seg-social": {
+            "name": "Seguridad Social",
+            "url": "https://sede.seg-social.gob.es",
+            "documentTypes": [
+              "tc1",
+              "tc2",
+              "idc"
+            ]
+          },
+          "bancosantander": {
+            "name": "Banco Santander",
+            "url": "https://www.bancosantander.es",
+            "documentTypes": [
+              "extracto",
+              "movimientos"
+            ]
+          },
+          "caixabank": {
+            "name": "CaixaBank",
+            "url": "https://www.caixabank.es",
+            "documentTypes": [
+              "extracto",
+              "movimientos"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

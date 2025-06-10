@@ -311,7 +311,7 @@ export default function SuppliersPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  {availableSectors.map((sector) => (
+                  {availableSectors.filter(sector => sector && sector.trim()).map((sector) => (
                     <SelectItem key={sector} value={sector}>
                       {sector}
                     </SelectItem>

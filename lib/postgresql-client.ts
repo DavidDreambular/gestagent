@@ -1,9 +1,14 @@
 ﻿import { Pool, PoolClient } from 'pg';
+import { dbAdapter } from './db-adapter';
+import { memoryDB } from './memory-db';
+
+// Inicializar el adaptador
+dbAdapter.initialize().catch(console.error);
 
 // Configuración de la conexión
 const connectionPool = new Pool({
   host: process.env.POSTGRES_HOST || 'localhost',
-  port: parseInt(process.env.POSTGRES_PORT || '5433'),
+  port: parseInt(process.env.POSTGRES_PORT || '5432'),
   database: process.env.POSTGRES_DB || 'gestagent',
   user: process.env.POSTGRES_USER || 'gestagent_user',
   password: process.env.POSTGRES_PASSWORD || 'gestagent_pass_2024',
@@ -79,10 +84,11 @@ export class PostgreSQLClient {
   async query<T = any>(text: string, params?: any[]): Promise<PostgreSQLResponse<T[]>> {
     try {
       const start = Date.now();
-      const result = await this.pool.query(text, params);
+      const result = await dbAdapter.query(text, params);
       const duration = Date.now() - start;
       
-      console.log(`📊 [PostgreSQL] Query executed in ${duration}ms`);
+      const source = dbAdapter.isUsingPostgreSQL() ? 'PostgreSQL' : 'Memory';
+      console.log(`📊 [${source}] Query executed in ${duration}ms`);
       
       return {
         data: result.rows as T[],
@@ -90,7 +96,7 @@ export class PostgreSQLClient {
         count: result.rowCount || 0
       };
     } catch (error) {
-      console.error('❌ [PostgreSQL] Query error:', error);
+      console.error('❌ [Database] Query error:', error);
       return {
         data: null,
         error: error as Error,
@@ -323,13 +329,18 @@ export class PostgreSQLClient {
 
   async testConnection(): Promise<boolean> {
     try {
-      const result = await this.query('SELECT NOW() as current_time, version() as pg_version');
-      console.log('✅ [PostgreSQL] Conexión exitosa');
-      console.log('📅 [PostgreSQL] Tiempo actual:', result.data?.[0]?.current_time);
-      console.log('🐘 [PostgreSQL] Versión:', result.data?.[0]?.pg_version);
+      if (dbAdapter.isUsingPostgreSQL()) {
+        const result = await this.query('SELECT NOW() as current_time, version() as pg_version');
+        console.log('✅ [PostgreSQL] Conexión exitosa');
+        console.log('📅 [PostgreSQL] Tiempo actual:', result.data?.[0]?.current_time);
+        console.log('🐘 [PostgreSQL] Versión:', result.data?.[0]?.pg_version);
+      } else {
+        console.log('✅ [Memory DB] Base de datos en memoria activa');
+        console.log('⚠️  Los datos se perderán al reiniciar el servidor');
+      }
       return true;
     } catch (error) {
-      console.error('❌ [PostgreSQL] Error de conexión:', error);
+      console.error('❌ [Database] Error de conexión:', error);
       return false;
     }
   }

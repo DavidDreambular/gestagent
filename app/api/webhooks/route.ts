@@ -1,39 +1,24 @@
 // API Route para webhooks de integración
 // /app/api/webhooks/route.ts
-// Recepción y procesamiento de webhooks de sistemas externos
 
 import { NextRequest, NextResponse } from 'next/server';
-import { PostgreSQLClient } from '@/lib/postgresql-client';
+import { memoryDB } from '@/lib/memory-db';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import crypto from 'crypto';
-import { AuditService } from '@/services/audit';
 
-const pgClient = new PostgreSQLClient();
-const auditService = new AuditService();
+export const dynamic = 'force-dynamic';
 
 // Tipos para webhooks
 interface WebhookPayload {
   event: string;
   data: any;
-  timestamp: string;
-  source: string;
+  timestamp?: string;
+  source?: string;
   signature?: string;
 }
 
-interface ProcessedWebhook {
-  id: string;
-  event: string;
-  source: string;
-  status: 'received' | 'processing' | 'processed' | 'failed';
-  payload: any;
-  response?: any;
-  error?: string;
-  timestamp: string;
-  processed_at?: string;
-}
-
-export const dynamic = 'force-dynamic';
-
-// POST - Recibir webhook
+// POST - Recibir webhook externo
 export async function POST(request: NextRequest) {
   const webhookId = crypto.randomUUID();
   
@@ -63,14 +48,16 @@ export async function POST(request: NextRequest) {
       const isValid = verifyWebhookSignature(payload, source);
       if (!isValid) {
         console.error(`🔒 [WEBHOOK-${webhookId}] Firma inválida para source: ${source}`);
-        await logWebhook({
+        
+        // Registrar webhook fallido
+        await memoryDB.createWebhook({
           id: webhookId,
           event: payload.event,
           source,
           status: 'failed',
           payload,
           error: 'Firma inválida',
-          timestamp: new Date().toISOString()
+          timestamp: new Date()
         });
         
         return NextResponse.json(
@@ -81,13 +68,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Registrar webhook recibido
-    await logWebhook({
+    await memoryDB.createWebhook({
       id: webhookId,
       event: payload.event,
       source,
       status: 'received',
       payload,
-      timestamp: new Date().toISOString()
+      timestamp: new Date()
     });
 
     console.log(`📝 [WEBHOOK-${webhookId}] Procesando evento: ${payload.event} desde ${source}`);
@@ -96,19 +83,24 @@ export async function POST(request: NextRequest) {
     const result = await processWebhookEvent(webhookId, payload, source);
 
     // Actualizar estado del webhook
-    await updateWebhookStatus(webhookId, 'processed', result);
+    await memoryDB.updateWebhook(webhookId, {
+      status: 'processed',
+      response: result
+    });
 
     // Registrar en auditoría
-    await AuditService.logAction({
-      action: 'webhook_processed',
-      resourceType: 'webhook',
-      resourceId: webhookId,
-      details: {
+    await memoryDB.createAuditLog({
+      entity_type: 'webhook',
+      entity_id: webhookId,
+      action: 'processed',
+      user_id: 'system',
+      changes: {
         webhook_id: webhookId,
         event: payload.event,
         source,
         result
-      }
+      },
+      notes: 'Webhook procesado automáticamente'
     });
 
     return NextResponse.json({
@@ -120,125 +112,251 @@ export async function POST(request: NextRequest) {
       result
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error(`💥 [WEBHOOK-${webhookId}] Error procesando webhook:`, error);
     
     // Actualizar estado con error
-    await updateWebhookStatus(webhookId, 'failed', null, error instanceof Error ? error.message : 'Error desconocido');
+    await memoryDB.updateWebhook(webhookId, {
+      status: 'failed',
+      error: error.message || 'Error desconocido'
+    });
 
     return NextResponse.json(
       { 
         error: 'Error procesando webhook',
         webhookId,
-        details: error instanceof Error ? error.message : 'Error desconocido'
+        details: error.message || 'Error desconocido'
       },
       { status: 500 }
     );
   }
 }
 
-// GET - Listar webhooks recibidos
+// GET - Listar webhooks recibidos (solo admin)
 export async function GET(request: NextRequest) {
   try {
+    // Verificar autenticación
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json(
+        { error: 'No autorizado' },
+        { status: 401 }
+      );
+    }
+
+    // Solo administradores pueden ver webhooks
+    if (session.user?.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Solo administradores pueden acceder a los webhooks' },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
-    const source = searchParams.get('source');
-    const event = searchParams.get('event');
-    const status = searchParams.get('status');
+    const source = searchParams.get('source') || undefined;
+    const event = searchParams.get('event') || undefined;
+    const status = searchParams.get('status') || undefined;
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    const conditions: string[] = [];
-    const params: any[] = [];
-    let paramCount = 0;
+    console.log(`🔍 [WEBHOOK API] Listando webhooks con filtros:`, {
+      source, event, status, limit, offset
+    });
 
-    if (source) {
-      paramCount++;
-      conditions.push(`source = $${paramCount}`);
-      params.push(source);
-    }
+    // Construir filtros
+    const filters: any = {};
+    if (source) filters.source = source;
+    if (event) filters.event = event;
+    if (status) filters.status = status;
 
-    if (event) {
-      paramCount++;
-      conditions.push(`event = $${paramCount}`);
-      params.push(event);
-    }
+    // Obtener webhooks
+    const allWebhooks = await memoryDB.getAllWebhooks(filters);
 
-    if (status) {
-      paramCount++;
-      conditions.push(`status = $${paramCount}`);
-      params.push(status);
-    }
+    // Aplicar paginación
+    const total = allWebhooks.length;
+    const paginatedWebhooks = allWebhooks.slice(offset, offset + limit);
 
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    // Calcular estadísticas
+    const stats = {
+      total: total,
+      by_status: allWebhooks.reduce((acc, w) => {
+        acc[w.status] = (acc[w.status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>),
+      by_source: allWebhooks.reduce((acc, w) => {
+        acc[w.source] = (acc[w.source] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>),
+      success_rate: total > 0 
+        ? ((allWebhooks.filter(w => w.status === 'processed').length / total) * 100).toFixed(1)
+        : 0
+    };
 
-    try {
-      const query = `
-        SELECT * FROM webhooks 
-        ${whereClause}
-        ORDER BY timestamp DESC 
-        LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
-      `;
-      
-      params.push(limit, offset);
-      const result = await pgClient.query<ProcessedWebhook>(query, params);
+    console.log(`✅ [WEBHOOK API] Retornando ${paginatedWebhooks.length} webhooks de ${total} totales`);
 
-      const webhooks = result.data || [];
+    return NextResponse.json({
+      success: true,
+      data: paginatedWebhooks,
+      stats,
+      pagination: {
+        limit,
+        offset,
+        total,
+        hasMore: offset + limit < total
+      },
+      source: 'memory_db'
+    });
 
-      return NextResponse.json({
-        success: true,
-        data: webhooks,
-        pagination: {
-          limit,
-          offset,
-          total: webhooks.length
-        },
-        source: 'database'
-      });
-
-    } catch (postgresqlError) {
-      console.warn('Error consultando webhooks de PostgreSQL:', postgresqlError);
-      
-      // Fallback a datos de ejemplo
-      const mockWebhooks: ProcessedWebhook[] = [
-        {
-          id: 'webhook-001',
-          event: 'document.processed',
-          source: 'mistral',
-          status: 'processed',
-          payload: { documentId: 'doc-123', confidence: 0.95 },
-          response: { success: true },
-          timestamp: new Date(Date.now() - 3600000).toISOString(),
-          processed_at: new Date(Date.now() - 3595000).toISOString()
-        },
-        {
-          id: 'webhook-002',
-          event: 'invoice.validation.completed',
-          source: 'accounting_system',
-          status: 'processed',
-          payload: { invoiceId: 'inv-456', status: 'validated' },
-          response: { updated: true },
-          timestamp: new Date(Date.now() - 7200000).toISOString(),
-          processed_at: new Date(Date.now() - 7195000).toISOString()
-        }
-      ];
-
-      return NextResponse.json({
-        success: true,
-        data: mockWebhooks.slice(offset, offset + limit),
-        pagination: {
-          limit,
-          offset,
-          total: mockWebhooks.length
-        },
-        source: 'mock',
-        warning: 'Usando datos de ejemplo'
-      });
-    }
-
-  } catch (error) {
-    console.error('Error en GET /api/webhooks:', error);
+  } catch (error: any) {
+    console.error('❌ [WEBHOOK API] Error en GET:', error);
     return NextResponse.json(
-      { error: 'Error interno del servidor' },
+      { 
+        error: 'Error interno del servidor',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// PUT - Configurar webhook (crear/actualizar configuración)
+export async function PUT(request: NextRequest) {
+  try {
+    // Verificar autenticación
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json(
+        { error: 'No autorizado' },
+        { status: 401 }
+      );
+    }
+
+    // Solo administradores pueden configurar webhooks
+    if (session.user?.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Solo administradores pueden configurar webhooks' },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
+    const { source, webhook_url, secret, events, is_active } = body;
+
+    if (!source || !webhook_url) {
+      return NextResponse.json(
+        { error: 'Source y webhook_url son requeridos' },
+        { status: 400 }
+      );
+    }
+
+    console.log(`⚙️ [WEBHOOK CONFIG] Configurando webhook para ${source}`);
+
+    // Por ahora solo registramos la configuración en auditoría
+    // En una implementación real, esto se guardaría en una tabla de configuración
+    await memoryDB.createAuditLog({
+      entity_type: 'webhook_config',
+      entity_id: source,
+      action: 'configured',
+      user_id: session.user?.id || 'unknown',
+      changes: {
+        source,
+        webhook_url,
+        has_secret: !!secret,
+        events: events || ['*'],
+        is_active: is_active !== false
+      },
+      notes: 'Configuración de webhook actualizada'
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Configuración de webhook actualizada',
+      source,
+      events: events || ['*'],
+      is_active: is_active !== false
+    });
+
+  } catch (error: any) {
+    console.error('❌ [WEBHOOK CONFIG] Error:', error);
+    return NextResponse.json(
+      { 
+        error: 'Error configurando webhook',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE - Eliminar webhook específico
+export async function DELETE(request: NextRequest) {
+  try {
+    // Verificar autenticación
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json(
+        { error: 'No autorizado' },
+        { status: 401 }
+      );
+    }
+
+    // Solo administradores pueden eliminar webhooks
+    if (session.user?.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Solo administradores pueden eliminar webhooks' },
+        { status: 403 }
+      );
+    }
+
+    const { searchParams } = new URL(request.url);
+    const webhookId = searchParams.get('id');
+
+    if (!webhookId) {
+      return NextResponse.json(
+        { error: 'ID de webhook requerido' },
+        { status: 400 }
+      );
+    }
+
+    console.log(`🗑️ [WEBHOOK] Eliminando webhook: ${webhookId}`);
+
+    // Verificar que el webhook existe
+    const webhook = await memoryDB.getWebhookById(webhookId);
+    if (!webhook) {
+      return NextResponse.json(
+        { error: 'Webhook no encontrado' },
+        { status: 404 }
+      );
+    }
+
+    // Eliminar webhook
+    const deleted = await memoryDB.deleteWebhook(webhookId);
+
+    if (deleted) {
+      // Registrar en auditoría
+      await memoryDB.createAuditLog({
+        entity_type: 'webhook',
+        entity_id: webhookId,
+        action: 'deleted',
+        user_id: session.user?.id || 'unknown',
+        changes: webhook,
+        notes: 'Webhook eliminado por administrador'
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Webhook eliminado correctamente',
+      webhookId
+    });
+
+  } catch (error: any) {
+    console.error('❌ [WEBHOOK DELETE] Error:', error);
+    return NextResponse.json(
+      { 
+        error: 'Error eliminando webhook',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      },
       { status: 500 }
     );
   }
@@ -267,7 +385,8 @@ function getWebhookSecret(source: string): string | null {
   const secrets: { [key: string]: string } = {
     'mistral': process.env.MISTRAL_WEBHOOK_SECRET || '',
     'accounting_system': process.env.ACCOUNTING_WEBHOOK_SECRET || '',
-    'stripe': process.env.STRIPE_WEBHOOK_SECRET || ''
+    'stripe': process.env.STRIPE_WEBHOOK_SECRET || '',
+    'sage': process.env.SAGE_WEBHOOK_SECRET || ''
   };
 
   return secrets[source] || null;
@@ -289,6 +408,9 @@ async function processWebhookEvent(webhookId: string, payload: WebhookPayload, s
     
     case 'user.registered':
       return await handleUserRegistered(payload.data);
+
+    case 'template.training.completed':
+      return await handleTemplateTrainingCompleted(payload.data);
     
     default:
       console.warn(`⚠️ [WEBHOOK-${webhookId}] Evento no reconocido: ${payload.event}`);
@@ -304,23 +426,29 @@ async function processWebhookEvent(webhookId: string, payload: WebhookPayload, s
 async function handleDocumentProcessed(data: any): Promise<any> {
   console.log('📄 Procesando documento completado:', data);
   
-  // Actualizar estado del documento en la base de datos
   if (data.documentId) {
     try {
-      const updateQuery = `
-        UPDATE documents 
-        SET status = 'completed', 
-            processed_json = $1,
-            version = version + 1
-        WHERE job_id = $2
-      `;
-      
-      await pgClient.query(updateQuery, [
-        JSON.stringify(data.extractedData || {}),
-        data.documentId
-      ]);
+      // Actualizar documento en memoria
+      const document = await memoryDB.getDocumentByJobId(data.documentId);
+      if (document) {
+        await memoryDB.updateDocument(data.documentId, {
+          status: 'completed',
+          processed_json: data.extractedData || document.processed_json
+        });
 
-      return { updated: true, documentId: data.documentId };
+        // Crear notificación
+        if (document.user_id) {
+          await memoryDB.createNotification({
+            user_id: document.user_id,
+            type: 'success',
+            title: 'Documento procesado',
+            message: `El documento ${document.file_path?.split('/').pop()} ha sido procesado exitosamente`,
+            data: { document_id: data.documentId }
+          });
+        }
+
+        return { updated: true, documentId: data.documentId };
+      }
     } catch (error) {
       console.error('Error actualizando documento:', error);
       return { updated: false, error: 'Error de base de datos' };
@@ -345,47 +473,22 @@ async function handleUserRegistered(data: any): Promise<any> {
   return { processed: true, userId: data.userId };
 }
 
-// Función para registrar webhook en base de datos
-async function logWebhook(webhook: ProcessedWebhook): Promise<void> {
-  try {
-    const insertQuery = `
-      INSERT INTO webhooks (id, event, source, status, payload, response, error, timestamp, processed_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    `;
-    
-    await pgClient.query(insertQuery, [
-      webhook.id,
-      webhook.event,
-      webhook.source,
-      webhook.status,
-      JSON.stringify(webhook.payload),
-      webhook.response ? JSON.stringify(webhook.response) : null,
-      webhook.error,
-      webhook.timestamp,
-      webhook.processed_at
-    ]);
-  } catch (error) {
-    console.error('Error registrando webhook en BD:', error);
-  }
-}
+async function handleTemplateTrainingCompleted(data: any): Promise<any> {
+  console.log('🧠 Procesando entrenamiento de plantilla completado:', data);
+  
+  if (data.templateId && data.success_rate) {
+    try {
+      await memoryDB.updateExtractionTemplate(data.templateId, {
+        success_rate: data.success_rate,
+        usage_count: data.usage_count || 0
+      });
 
-// Función para actualizar estado del webhook
-async function updateWebhookStatus(webhookId: string, status: string, response?: any, error?: string): Promise<void> {
-  try {
-    const updateQuery = `
-      UPDATE webhooks 
-      SET status = $1, response = $2, error = $3, processed_at = $4
-      WHERE id = $5
-    `;
-    
-    await pgClient.query(updateQuery, [
-      status,
-      response ? JSON.stringify(response) : null,
-      error,
-      new Date().toISOString(),
-      webhookId
-    ]);
-  } catch (dbError) {
-    console.error('Error actualizando estado de webhook:', dbError);
+      return { updated: true, templateId: data.templateId };
+    } catch (error) {
+      console.error('Error actualizando plantilla:', error);
+      return { updated: false, error: 'Error actualizando plantilla' };
+    }
   }
-} 
+
+  return { updated: false, reason: 'templateId o success_rate no proporcionados' };
+}

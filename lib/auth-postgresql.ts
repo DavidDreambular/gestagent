@@ -5,6 +5,8 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { PostgreSQLClient } from './postgresql-client';
+import { dbAdapter } from './db-adapter';
+import { memoryDB } from './memory-db';
 
 const pgClient = new PostgreSQLClient();
 
@@ -61,14 +63,24 @@ export class AuthService {
   ): Promise<RegisterResult> {
     try {
       // Verificar si el email ya existe
-      const existingUserQuery = `SELECT user_id FROM users WHERE email = $1`;
-      const existingUser = await pgClient.query<{ user_id: string }>(existingUserQuery, [email]);
+      if (!dbAdapter.isUsingPostgreSQL()) {
+        const existingUser = await memoryDB.getUserByEmail(email);
+        if (existingUser) {
+          return {
+            success: false,
+            error: 'El email ya está registrado'
+          };
+        }
+      } else {
+        const existingUserQuery = `SELECT user_id FROM users WHERE email = $1`;
+        const existingUser = await pgClient.query<{ user_id: string }>(existingUserQuery, [email]);
 
-      if (existingUser.data && existingUser.data.length > 0) {
-        return {
-          success: false,
-          error: 'El email ya está registrado'
-        };
+        if (existingUser.data && existingUser.data.length > 0) {
+          return {
+            success: false,
+            error: 'El email ya está registrado'
+          };
+        }
       }
 
       // Hash de la contraseña
@@ -122,46 +134,76 @@ export class AuthService {
    */
   async login(email: string, password: string): Promise<LoginResult> {
     try {
-      // Buscar usuario por email
-      const userQuery = `
-        SELECT user_id, username, email, password_hash, role, is_active
-        FROM users 
-        WHERE email = $1
-      `;
-
-      const result = await pgClient.query<{
-        user_id: string;
-        username: string;
-        email: string;
-        password_hash: string;
-        role: string;
-        is_active: boolean;
-      }>(userQuery, [email]);
-
-      if (result.error || !result.data || result.data.length === 0) {
-        return {
-          success: false,
-          error: 'Credenciales inválidas'
+      let user: any;
+      
+      if (!dbAdapter.isUsingPostgreSQL()) {
+        // Usar base de datos en memoria
+        const memUser = await memoryDB.getUserByEmail(email);
+        if (!memUser) {
+          return {
+            success: false,
+            error: 'Credenciales inválidas'
+          };
+        }
+        
+        // Verificar contraseña
+        const passwordValid = await bcrypt.compare(password, memUser.password);
+        if (!passwordValid) {
+          return {
+            success: false,
+            error: 'Credenciales inválidas'
+          };
+        }
+        
+        user = {
+          user_id: memUser.user_id,
+          username: memUser.username,
+          email: memUser.email,
+          role: memUser.role,
+          is_active: true
         };
-      }
+      } else {
+        // Usar PostgreSQL
+        const userQuery = `
+          SELECT user_id, username, email, password_hash, role, is_active
+          FROM users 
+          WHERE email = $1
+        `;
 
-      const user = result.data[0];
+        const result = await pgClient.query<{
+          user_id: string;
+          username: string;
+          email: string;
+          password_hash: string;
+          role: string;
+          is_active: boolean;
+        }>(userQuery, [email]);
 
-      // Verificar si el usuario está activo
-      if (!user.is_active) {
-        return {
-          success: false,
-          error: 'Usuario desactivado'
-        };
-      }
+        if (result.error || !result.data || result.data.length === 0) {
+          return {
+            success: false,
+            error: 'Credenciales inválidas'
+          };
+        }
 
-      // Verificar contraseña
-      const passwordValid = await bcrypt.compare(password, user.password_hash);
-      if (!passwordValid) {
-        return {
-          success: false,
-          error: 'Credenciales inválidas'
-        };
+        user = result.data[0];
+
+        // Verificar si el usuario está activo
+        if (!user.is_active) {
+          return {
+            success: false,
+            error: 'Usuario desactivado'
+          };
+        }
+
+        // Verificar contraseña
+        const passwordValid = await bcrypt.compare(password, user.password_hash);
+        if (!passwordValid) {
+          return {
+            success: false,
+            error: 'Credenciales inválidas'
+          };
+        }
       }
 
       // Actualizar último login

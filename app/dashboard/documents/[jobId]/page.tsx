@@ -106,7 +106,15 @@ export default function DocumentDetailPage() {
         
       } catch (err) {
         console.error('❌ [Frontend] Error loading document:', err);
-        setError(err instanceof Error ? err.message : 'Error al cargar el documento');
+        const errorMessage = err instanceof Error ? err.message : 'Error al cargar el documento';
+        setError(errorMessage);
+        
+        // Si el documento no existe, redirigir a la lista después de un momento
+        if (errorMessage.includes('no encontrado') || errorMessage.includes('Not Found')) {
+          setTimeout(() => {
+            router.push('/dashboard/documents');
+          }, 3000);
+        }
       } finally {
         setLoading(false);
       }
@@ -119,8 +127,56 @@ export default function DocumentDetailPage() {
 
   // Función para procesar múltiples facturas
   const processMultipleInvoices = (extractedData: any): IndividualInvoice[] => {
+    console.log('[PROCESS] Procesando datos extraídos:', extractedData);
+    
+    // Si no hay datos
+    if (!extractedData) {
+      return [];
+    }
+
+    // Si hay un array de facturas detectadas (formato Mistral)
+    if (extractedData.detected_invoices && Array.isArray(extractedData.detected_invoices)) {
+      console.log(`[PROCESS] Encontradas ${extractedData.detected_invoices.length} facturas en formato Mistral`);
+      
+      return extractedData.detected_invoices.map((invoice: any, index: number) => {
+        // Calcular totales si no vienen
+        let totals = invoice.totals || {};
+        
+        if (!totals.total && invoice.total_amount) {
+          totals.total = invoice.total_amount;
+        }
+        
+        if (!totals.total_tax_amount && invoice.tax_amount) {
+          totals.total_tax_amount = invoice.tax_amount;
+        }
+        
+        if (!totals.subtotal && invoice.base_amount) {
+          totals.subtotal = invoice.base_amount;
+        }
+        
+        // Si no hay subtotal pero sí total y tax, calcularlo
+        if (!totals.subtotal && totals.total && totals.total_tax_amount) {
+          totals.subtotal = totals.total - totals.total_tax_amount;
+        }
+        
+        return {
+          index,
+          invoice_number: invoice.invoice_number || invoice.number || `Factura ${index + 1}`,
+          supplier: invoice.supplier || invoice.emitter || {},
+          customer: invoice.customer || invoice.receiver || {},
+          issue_date: invoice.issue_date || invoice.date || '',
+          due_date: invoice.due_date,
+          items: invoice.line_items || invoice.items || [],
+          totals: totals,
+          tax_breakdown: invoice.tax_breakdown || [],
+          payment_method: invoice.payment_method,
+          notes: invoice.notes || invoice.observations
+        };
+      });
+    }
+
+    // Si es un array directo de facturas
     if (Array.isArray(extractedData)) {
-      // Si ya es un array de facturas
       return extractedData.map((invoice, index) => ({
         index,
         invoice_number: invoice.invoice_number || `Factura ${index + 1}`,
@@ -136,37 +192,40 @@ export default function DocumentDetailPage() {
       }));
     }
 
-    // Si hay datos de fallback con múltiples facturas detectadas
-    if (extractedData.detected_invoices && extractedData.detected_invoices.length > 1) {
-      return extractedData.detected_invoices.map((invoiceNum: string, index: number) => ({
-        index,
-        invoice_number: invoiceNum,
-        supplier: { name: extractedData.detected_suppliers?.[index] || 'No detectado' },
-        customer: {},
-        issue_date: extractedData.detected_dates?.[index] || '',
-        items: [],
-        totals: { 
-          total: extractedData.detected_totals?.[index] || 0,
-          total_tax_amount: extractedData.detected_tax_info?.filter((t: any) => t.type === 'amount')?.[index]?.value || 0
-        },
-        tax_breakdown: []
-      }));
+    // Si es una sola factura (formato directo)
+    if (extractedData.invoice_number || extractedData.supplier || extractedData.customer) {
+      const totals = extractedData.totals || {};
+      
+      if (!totals.total && extractedData.total_amount) {
+        totals.total = extractedData.total_amount;
+      }
+      
+      if (!totals.total_tax_amount && extractedData.tax_amount) {
+        totals.total_tax_amount = extractedData.tax_amount;
+      }
+      
+      if (!totals.subtotal && extractedData.base_amount) {
+        totals.subtotal = extractedData.base_amount;
+      }
+      
+      return [{
+        index: 0,
+        invoice_number: extractedData.invoice_number || 'Factura única',
+        supplier: extractedData.supplier || {},
+        customer: extractedData.customer || {},
+        issue_date: extractedData.issue_date || '',
+        due_date: extractedData.due_date,
+        items: extractedData.line_items || extractedData.items || [],
+        totals: totals,
+        tax_breakdown: extractedData.tax_breakdown || [],
+        payment_method: extractedData.payment_method,
+        notes: extractedData.notes
+      }];
     }
 
-    // Si es una sola factura
-    return [{
-      index: 0,
-      invoice_number: extractedData.invoice_number || 'Factura única',
-      supplier: extractedData.supplier || {},
-      customer: extractedData.customer || {},
-      issue_date: extractedData.issue_date || '',
-      due_date: extractedData.due_date,
-      items: extractedData.items || [],
-      totals: extractedData.totals || {},
-      tax_breakdown: extractedData.tax_breakdown || [],
-      payment_method: extractedData.payment_method,
-      notes: extractedData.notes
-    }];
+    // Si no se pudo procesar nada
+    console.warn('[PROCESS] No se pudieron procesar facturas del formato:', extractedData);
+    return [];
   };
 
   // Filtrar facturas según búsqueda
@@ -284,7 +343,7 @@ export default function DocumentDetailPage() {
             <Separator orientation="vertical" className="h-6" />
             <div>
               <h1 className="text-xl font-bold">
-                {currentInvoice?.supplier?.name || 'Documento de Facturas'}
+                {currentInvoice?.supplier?.name || currentInvoice?.supplier?.commercial_name || 'Documento de Facturas'}
               </h1>
               <p className="text-sm text-gray-600">
                 Factura: {currentInvoice?.invoice_number || 'N/A'} | Job ID: {documentData.jobId}
@@ -390,11 +449,11 @@ export default function DocumentDetailPage() {
                       }`}
                       onClick={() => setSelectedInvoice(invoice.index)}
                     >
-                      <div className="font-medium text-sm truncate">
-                        {invoice.invoice_number}
+                      <div className="font-bold text-sm truncate">
+                        {invoice.supplier.name || invoice.supplier.commercial_name || 'Proveedor no detectado'}
                       </div>
                       <div className="text-xs text-gray-600 truncate">
-                        {invoice.supplier.name || 'Proveedor no detectado'}
+                        Factura: {invoice.invoice_number}
                       </div>
                       <div className="text-xs text-gray-500">
                         {formatDate(invoice.issue_date)}
@@ -422,10 +481,10 @@ export default function DocumentDetailPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <CardTitle className="text-xl">
-                        Factura: {currentInvoice.invoice_number}
+                        {currentInvoice.supplier?.name || currentInvoice.supplier?.commercial_name || 'Proveedor no identificado'}
                       </CardTitle>
                       <CardDescription>
-                        Factura {selectedInvoice + 1} de {invoices.length}
+                        Factura {selectedInvoice + 1} de {invoices.length} • Nº {currentInvoice.invoice_number}
                       </CardDescription>
                     </div>
                     <div className="flex items-center space-x-2">

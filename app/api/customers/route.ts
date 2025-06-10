@@ -56,8 +56,14 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      customers: customers || [],
-      total: totalCount,
+      data: {
+        customers: customers || [],
+        metadata: {
+          total: totalCount,
+          total_active: customers?.filter((c: any) => c.status === 'active').length || 0,
+          available_types: [...new Set(customers?.map((c: any) => c.customer_type).filter(Boolean) || [])]
+        }
+      },
       pagination: {
         limit,
         offset,

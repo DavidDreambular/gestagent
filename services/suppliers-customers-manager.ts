@@ -289,41 +289,180 @@ export class SuppliersCustomersManager {
     }
   }
 
-  // POSTGRESQL MOCK METHODS - TODO: Replace with real PostgreSQL MCP tools
+  // POSTGRESQL REAL METHODS - Using PostgreSQL client
   private async findSupplierByNIF(nif: string): Promise<any> {
-    console.log(`🔍 [PostgreSQL Mock] Searching supplier by NIF: ${nif}`);
-    // TODO: Implement with PostgreSQL MCP tools
-    return null; // Mock return
+    console.log(`🔍 [PostgreSQL] Searching supplier by NIF: ${nif}`);
+    
+    const pgClient = await import('@/lib/postgresql-client');
+    const { data: suppliers } = await pgClient.query(
+      'SELECT * FROM suppliers WHERE nif_cif = $1 AND status = $2',
+      [nif, 'active']
+    );
+    
+    return suppliers && suppliers.length > 0 ? suppliers[0] : null;
   }
 
   private async findCustomerByNIF(nif: string): Promise<any> {
-    console.log(`🔍 [PostgreSQL Mock] Searching customer by NIF: ${nif}`);
-    // TODO: Implement with PostgreSQL MCP tools
-    return null; // Mock return
+    console.log(`🔍 [PostgreSQL] Searching customer by NIF: ${nif}`);
+    
+    const pgClient = await import('@/lib/postgresql-client');
+    const { data: customers } = await pgClient.query(
+      'SELECT * FROM customers WHERE nif_cif = $1 AND status = $2',
+      [nif, 'active']
+    );
+    
+    return customers && customers.length > 0 ? customers[0] : null;
   }
 
   private async createSupplier(supplierData: any): Promise<string> {
-    console.log(`➕ [PostgreSQL Mock] Creating supplier: ${supplierData.name}`);
-    // TODO: Implement with PostgreSQL MCP tools
-    return supplierData.id; // Mock return
+    console.log(`➕ [PostgreSQL] Creating supplier: ${supplierData.name}`);
+    
+    const pgClient = await import('@/lib/postgresql-client');
+    
+    // Si no hay NIF/CIF, generar uno temporal único
+    const nifCif = supplierData.nif_cif || `TEMP_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    const { data: newSupplier, error } = await pgClient.query(
+      `INSERT INTO suppliers (name, nif_cif, commercial_name, address, postal_code, city, province, phone, email, business_sector, status, created_at, updated_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()) 
+       RETURNING supplier_id`,
+      [
+        supplierData.name,
+        nifCif, // Siempre tendrá un valor (real o temporal)
+        supplierData.commercial_name || null,
+        supplierData.address || null,
+        supplierData.postal_code || null,
+        supplierData.city || null,
+        supplierData.province || null,
+        supplierData.phone || null,
+        supplierData.email || null,
+        supplierData.business_sector || null,
+        supplierData.status || 'active'
+      ]
+    );
+    
+    if (error) {
+      console.error('❌ [PostgreSQL] Error creating supplier:', error);
+      throw error;
+    }
+    
+    const supplierId = newSupplier?.[0]?.supplier_id;
+    if (supplierId) {
+      console.log(`✅ [PostgreSQL] Proveedor creado con ID: ${supplierId}, NIF/CIF: ${nifCif}`);
+    }
+    
+    return supplierId || null;
   }
 
   private async createCustomer(customerData: any): Promise<string> {
-    console.log(`➕ [PostgreSQL Mock] Creating customer: ${customerData.name}`);
-    // TODO: Implement with PostgreSQL MCP tools
-    return customerData.id; // Mock return
+    console.log(`➕ [PostgreSQL] Creating customer: ${customerData.name}`);
+    
+    const pgClient = await import('@/lib/postgresql-client');
+    
+    // Si no hay NIF/CIF, generar uno temporal único
+    const nifCif = customerData.nif_cif || `TEMP_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    const { data: newCustomer, error } = await pgClient.query(
+      `INSERT INTO customers (name, nif_cif, address, postal_code, city, province, phone, email, customer_type, status, created_at, updated_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW()) 
+       RETURNING customer_id`,
+      [
+        customerData.name,
+        nifCif, // Siempre tendrá un valor (real o temporal)
+        customerData.address || null,
+        customerData.postal_code || null,
+        customerData.city || null,
+        customerData.province || null,
+        customerData.phone || null,
+        customerData.email || null,
+        customerData.customer_type || 'company',
+        customerData.status || 'active'
+      ]
+    );
+    
+    if (error) {
+      console.error('❌ [PostgreSQL] Error creating customer:', error);
+      throw error;
+    }
+    
+    const customerId = newCustomer?.[0]?.customer_id;
+    if (customerId) {
+      console.log(`✅ [PostgreSQL] Cliente creado con ID: ${customerId}, NIF/CIF: ${nifCif}`);
+    }
+    
+    return customerId || null;
   }
 
   private async updateSupplier(id: string, data: any): Promise<string> {
-    console.log(`📝 [PostgreSQL Mock] Updating supplier: ${id}`);
-    // TODO: Implement with PostgreSQL MCP tools
-    return id; // Mock return
+    console.log(`📝 [PostgreSQL] Updating supplier: ${id}`);
+    
+    const pgClient = await import('@/lib/postgresql-client');
+    const fields = [];
+    const values = [];
+    let paramIndex = 1;
+    
+    // Construir campos dinámicamente
+    Object.entries(data).forEach(([key, value]) => {
+      if (value !== undefined && key !== 'id') {
+        fields.push(`${key} = $${paramIndex}`);
+        values.push(value);
+        paramIndex++;
+      }
+    });
+    
+    // Agregar updated_at
+    fields.push(`updated_at = NOW()`);
+    
+    // Agregar el ID al final
+    values.push(id);
+    
+    const { error } = await pgClient.query(
+      `UPDATE suppliers SET ${fields.join(', ')} WHERE supplier_id = $${paramIndex}`,
+      values
+    );
+    
+    if (error) {
+      console.error('❌ [PostgreSQL] Error updating supplier:', error);
+      throw error;
+    }
+    
+    return id;
   }
 
   private async updateCustomer(id: string, data: any): Promise<string> {
-    console.log(`📝 [PostgreSQL Mock] Updating customer: ${id}`);
-    // TODO: Implement with PostgreSQL MCP tools
-    return id; // Mock return
+    console.log(`📝 [PostgreSQL] Updating customer: ${id}`);
+    
+    const pgClient = await import('@/lib/postgresql-client');
+    const fields = [];
+    const values = [];
+    let paramIndex = 1;
+    
+    // Construir campos dinámicamente
+    Object.entries(data).forEach(([key, value]) => {
+      if (value !== undefined && key !== 'id') {
+        fields.push(`${key} = $${paramIndex}`);
+        values.push(value);
+        paramIndex++;
+      }
+    });
+    
+    // Agregar updated_at
+    fields.push(`updated_at = NOW()`);
+    
+    // Agregar el ID al final
+    values.push(id);
+    
+    const { error } = await pgClient.query(
+      `UPDATE customers SET ${fields.join(', ')} WHERE customer_id = $${paramIndex}`,
+      values
+    );
+    
+    if (error) {
+      console.error('❌ [PostgreSQL] Error updating customer:', error);
+      throw error;
+    }
+    
+    return id;
   }
 
   /**
@@ -334,18 +473,25 @@ export class SuppliersCustomersManager {
       // Limpiar nombre para búsqueda
       const cleanName = this.cleanName(name);
       
-      // TODO: Buscar usando PostgreSQL full-text search cuando esté configurado
-      console.log(`🔍 [PostgreSQL Mock] Searching similar supplier for: ${cleanName}`);
+      console.log(`🔍 [PostgreSQL] Searching similar supplier for: ${cleanName}`);
       
-      // Mock implementation - return null for now
-      const mockData: any[] = [];
+      const pgClient = await import('@/lib/postgresql-client');
+      
+      // Buscar proveedores con nombres similares usando ILIKE
+      const { data: suppliers } = await pgClient.query(
+        `SELECT * FROM suppliers 
+         WHERE status = 'active' 
+         AND (LOWER(name) LIKE $1 OR LOWER(commercial_name) LIKE $1)
+         ORDER BY name`,
+        [`%${cleanName}%`]
+      );
 
-      if (mockData.length === 0) {
+      if (!suppliers || suppliers.length === 0) {
         return null;
       }
 
       // Calcular similaridad y devolver el más parecido
-      const scored = mockData.map((supplier: any) => ({
+      const scored = suppliers.map((supplier: any) => ({
         ...supplier,
         similarity: this.calculateSimilarity(name, supplier.name)
       }));
@@ -370,17 +516,24 @@ export class SuppliersCustomersManager {
     try {
       const cleanName = this.cleanName(name);
       
-      // TODO: Buscar usando PostgreSQL full-text search cuando esté configurado
-      console.log(`🔍 [PostgreSQL Mock] Searching similar customer for: ${cleanName}`);
+      console.log(`🔍 [PostgreSQL] Searching similar customer for: ${cleanName}`);
       
-      // Mock implementation - return null for now
-      const mockData: any[] = [];
+      const pgClient = await import('@/lib/postgresql-client');
+      
+      // Buscar clientes con nombres similares usando ILIKE
+      const { data: customers } = await pgClient.query(
+        `SELECT * FROM customers 
+         WHERE status = 'active' 
+         AND LOWER(name) LIKE $1
+         ORDER BY name`,
+        [`%${cleanName}%`]
+      );
 
-      if (mockData.length === 0) {
+      if (!customers || customers.length === 0) {
         return null;
       }
 
-      const scored = mockData.map((customer: any) => ({
+      const scored = customers.map((customer: any) => ({
         ...customer,
         similarity: this.calculateSimilarity(name, customer.name)
       }));
@@ -484,8 +637,35 @@ export class SuppliersCustomersManager {
     details: any
   ): Promise<void> {
     try {
-      // TODO: Registrar en audit log con PostgreSQL MCP tools
-      console.log(`📋 [PostgreSQL Mock] Audit log: ${action} ${entityType} ${entityId}`, details);
+      const pgClient = await import('@/lib/postgresql-client');
+      
+      // Registrar en audit_logs
+      const { error } = await pgClient.query(
+        `INSERT INTO audit_logs 
+         (user_id, action, entity_type, entity_id, old_values, new_values, metadata, ip_address, user_agent) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          '00000000-0000-0000-0000-000000000000', // Usuario del sistema
+          action.toUpperCase(),
+          entityType.toUpperCase() + 'S', // SUPPLIERS o CUSTOMERS
+          entityId,
+          action === 'updated' ? JSON.stringify(details.from || {}) : null,
+          JSON.stringify(details.to || details),
+          JSON.stringify({ 
+            source: 'suppliers_manager',
+            document_id: documentId,
+            timestamp: new Date().toISOString()
+          }),
+          '127.0.0.1',
+          'suppliers-customers-manager/1.0'
+        ]
+      );
+      
+      if (error) {
+        console.error('❌ [SuppliersManager] Error registrando audit log:', error);
+      } else {
+        console.log(`📋 [PostgreSQL] Audit log: ${action} ${entityType} ${entityId}`);
+      }
     } catch (error) {
       console.error('❌ [SuppliersManager] Error registrando audit log:', error);
     }
@@ -608,14 +788,34 @@ export class SuppliersCustomersManager {
    */
   async getSuppliersStats(): Promise<any> {
     try {
-      // TODO: Implementar con PostgreSQL MCP tools
-      console.log('📊 [PostgreSQL Mock] Getting suppliers stats');
+      const pgClient = await import('@/lib/postgresql-client');
+      
+      console.log('📊 [PostgreSQL] Getting suppliers stats');
+      
+      // Obtener estadísticas básicas
+      const { data: stats } = await pgClient.query(`
+        SELECT 
+          COUNT(*) as total,
+          COUNT(CASE WHEN status = 'active' THEN 1 END) as active,
+          COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '30 days' THEN 1 END) as new_this_month
+        FROM suppliers
+      `);
+      
+      // Obtener top sectores
+      const { data: sectors } = await pgClient.query(`
+        SELECT business_sector, COUNT(*) as count
+        FROM suppliers
+        WHERE business_sector IS NOT NULL
+        GROUP BY business_sector
+        ORDER BY count DESC
+        LIMIT 5
+      `);
       
       return {
-        total: 0,
-        active: 0,
-        new_this_month: 0,
-        top_sectors: []
+        total: parseInt(stats?.[0]?.total || '0'),
+        active: parseInt(stats?.[0]?.active || '0'),
+        new_this_month: parseInt(stats?.[0]?.new_this_month || '0'),
+        top_sectors: sectors || []
       };
     } catch (error) {
       console.error('❌ [SuppliersManager] Error obteniendo stats de proveedores:', error);
@@ -628,14 +828,44 @@ export class SuppliersCustomersManager {
    */
   async getCustomersStats(): Promise<any> {
     try {
-      // TODO: Implementar con PostgreSQL MCP tools
-      console.log('📊 [PostgreSQL Mock] Getting customers stats');
+      const pgClient = await import('@/lib/postgresql-client');
+      
+      console.log('📊 [PostgreSQL] Getting customers stats');
+      
+      // Obtener estadísticas básicas
+      const { data: stats } = await pgClient.query(`
+        SELECT 
+          COUNT(*) as total,
+          COUNT(CASE WHEN status = 'active' THEN 1 END) as active,
+          COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '30 days' THEN 1 END) as new_this_month
+        FROM customers
+      `);
+      
+      // Obtener conteo por tipo
+      const { data: types } = await pgClient.query(`
+        SELECT customer_type, COUNT(*) as count
+        FROM customers
+        GROUP BY customer_type
+      `);
+      
+      const byType = {
+        company: 0,
+        individual: 0,
+        freelancer: 0,
+        public: 0
+      };
+      
+      types?.forEach((row: any) => {
+        if (row.customer_type && byType.hasOwnProperty(row.customer_type)) {
+          byType[row.customer_type as keyof typeof byType] = parseInt(row.count || '0');
+        }
+      });
       
       return {
-        total: 0,
-        active: 0,
-        new_this_month: 0,
-        by_type: { company: 0, individual: 0, freelancer: 0, public: 0 }
+        total: parseInt(stats?.[0]?.total || '0'),
+        active: parseInt(stats?.[0]?.active || '0'),
+        new_this_month: parseInt(stats?.[0]?.new_this_month || '0'),
+        by_type: byType
       };
     } catch (error) {
       console.error('❌ [SuppliersManager] Error obteniendo stats de clientes:', error);

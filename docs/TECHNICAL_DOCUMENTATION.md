@@ -39,7 +39,7 @@ sequenceDiagram
     participant A as API Routes
     participant S as Supabase
     participant M as Mistral OCR
-    participant G as GPT-4o
+    participant M as Mistral Document AI
 
     U->>F: Sube PDF
     F->>A: POST /api/documents/upload
@@ -277,7 +277,7 @@ export class MistralOCRService {
 }
 ```
 
-### **GPT-4o Validation**
+### **Mistral Document AI Processing**
 ```typescript
 // services/openai.ts
 import OpenAI from 'openai';
@@ -299,7 +299,7 @@ export class GPTValidationService {
     `;
 
     const response = await this.openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'mistral-small-latest',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
     });
@@ -510,7 +510,6 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 # AI Services
 MISTRAL_API_KEY=your-mistral-key
-OPENAI_API_KEY=your-openai-key
 
 # NextAuth
 NEXTAUTH_SECRET=your-secret-key

@@ -1,62 +1,28 @@
-// API Route para gestionar notificaciones - MODO FREE ACCESS
+// API Route para gestionar notificaciones
 // /app/api/notifications/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
+import { memoryDB } from '@/lib/memory-db';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-// Datos mock para desarrollo
-const mockNotifications = [
-  {
-    id: 1,
-    user_id: 'demo-user',
-    type: 'success',
-    title: 'Documento procesado',
-    message: 'La factura demo-001.pdf ha sido procesada exitosamente',
-    read: false,
-    created_at: '2025-06-06T12:00:00.000Z',
-    read_at: null,
-    metadata: { document_id: 'demo-001', processing_time: 1250 }
-  },
-  {
-    id: 2,
-    user_id: 'demo-user',
-    type: 'info',
-    title: 'Nuevo proveedor creado',
-    message: 'Se ha registrado automáticamente un nuevo proveedor: Empresa Demo S.L.',
-    read: true,
-    created_at: '2025-06-06T11:30:00.000Z',
-    read_at: '2025-06-06T11:35:00.000Z',
-    metadata: { supplier_id: 'supp-001', source: 'automatic' }
-  },
-  {
-    id: 3,
-    user_id: 'demo-user',
-    type: 'warning',
-    title: 'Documento con errores menores',
-    message: 'El documento factura-002.pdf fue procesado pero con algunas advertencias',
-    read: false,
-    created_at: '2025-06-06T10:15:00.000Z',
-    read_at: null,
-    metadata: { document_id: 'demo-002', warnings: ['fecha_dudosa', 'total_aproximado'] }
-  },
-  {
-    id: 4,
-    user_id: 'demo-user',
-    type: 'error',
-    title: 'Error en procesamiento',
-    message: 'No se pudo procesar el documento scan-error.pdf debido a calidad insuficiente',
-    read: false,
-    created_at: '2025-06-06T09:45:00.000Z',
-    read_at: null,
-    metadata: { document_id: 'error-001', error_code: 'POOR_QUALITY' }
-  }
-];
-
-// GET: Obtener notificaciones
+// GET: Obtener notificaciones del usuario
 export async function GET(request: NextRequest) {
   try {
-    console.log('📬 [API Notifications] Obteniendo notificaciones (modo desarrollo)');
+    // Verificar autenticación
+    const session = await getServerSession(authOptions);
+    const userId = session?.user?.id || request.headers.get('user-id');
+    
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'No autorizado. Por favor inicie sesión.' },
+        { status: 401 }
+      );
+    }
+
+    console.log('📬 [API Notifications] Obteniendo notificaciones para usuario:', userId);
     
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '50');
@@ -64,8 +30,11 @@ export async function GET(request: NextRequest) {
     
     console.log(`🔍 [API Notifications] Filtros: limit=${limit}, unreadOnly=${unreadOnly}`);
     
+    // Obtener notificaciones del usuario
+    const allNotifications = await memoryDB.getNotificationsByUserId(userId);
+    
     // Filtrar notificaciones
-    let filteredNotifications = [...mockNotifications];
+    let filteredNotifications = allNotifications;
     
     if (unreadOnly) {
       filteredNotifications = filteredNotifications.filter(n => !n.read);
@@ -75,7 +44,7 @@ export async function GET(request: NextRequest) {
     filteredNotifications = filteredNotifications.slice(0, limit);
     
     // Calcular no leídas
-    const unreadCount = mockNotifications.filter(n => !n.read).length;
+    const unreadCount = allNotifications.filter(n => !n.read).length;
     
     console.log(`✅ [API Notifications] Retornando ${filteredNotifications.length} notificaciones, ${unreadCount} no leídas`);
     
@@ -84,8 +53,7 @@ export async function GET(request: NextRequest) {
       notifications: filteredNotifications,
       unreadCount,
       total: filteredNotifications.length,
-      source: 'mock_data',
-      message: 'Datos de desarrollo (modo FREE ACCESS)'
+      source: 'memory_db'
     });
     
   } catch (error: any) {
@@ -94,20 +62,31 @@ export async function GET(request: NextRequest) {
       { 
         success: false,
         error: 'Error al obtener notificaciones',
-        details: error.message 
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       },
       { status: 500 }
     );
   }
 }
 
-// POST: Enviar notificación (mock)
+// POST: Crear nueva notificación
 export async function POST(request: NextRequest) {
   try {
-    console.log('📨 [API Notifications] Enviando notificación (modo desarrollo)');
+    // Verificar autenticación
+    const session = await getServerSession(authOptions);
+    const userId = session?.user?.id || request.headers.get('user-id');
+    
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'No autorizado. Por favor inicie sesión.' },
+        { status: 401 }
+      );
+    }
+
+    console.log('📨 [API Notifications] Creando notificación para usuario:', userId);
     
     const body = await request.json();
-    const { type, title, message, metadata } = body;
+    const { type, title, message, data, targetUserId } = body;
     
     if (!type || !title) {
       return NextResponse.json(
@@ -119,27 +98,24 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Simular creación de notificación
-    const newNotification = {
-      id: Date.now(),
-      user_id: 'demo-user',
+    // Solo admin puede enviar notificaciones a otros usuarios
+    const notificationUserId = targetUserId && session?.user?.role?.includes('admin') ? targetUserId : userId;
+    
+    // Crear notificación
+    const newNotification = await memoryDB.createNotification({
+      user_id: notificationUserId,
       type,
       title,
       message: message || '',
-      read: false,
-      created_at: new Date().toISOString(),
-      read_at: null,
-      metadata: metadata || {}
-    };
+      data: data || {}
+    });
     
-    console.log('✅ [API Notifications] Notificación mock creada:', newNotification.id);
+    console.log('✅ [API Notifications] Notificación creada:', newNotification.id);
     
     return NextResponse.json({
       success: true,
       notificationId: newNotification.id,
-      notification: newNotification,
-      source: 'mock_data',
-      message: 'Notificación mock creada (modo desarrollo)'
+      notification: newNotification
     });
     
   } catch (error: any) {
@@ -147,41 +123,73 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { 
         success: false,
-        error: 'Error al enviar notificación',
-        details: error.message 
+        error: 'Error al crear notificación',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       },
       { status: 500 }
     );
   }
 }
 
-// PATCH: Marcar notificaciones como leídas (mock)
+// PATCH: Marcar notificaciones como leídas
 export async function PATCH(request: NextRequest) {
   try {
-    console.log('✅ [API Notifications] Marcando notificaciones como leídas (modo desarrollo)');
+    // Verificar autenticación
+    const session = await getServerSession(authOptions);
+    const userId = session?.user?.id || request.headers.get('user-id');
+    
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'No autorizado. Por favor inicie sesión.' },
+        { status: 401 }
+      );
+    }
+
+    console.log('✅ [API Notifications] Marcando notificaciones como leídas para usuario:', userId);
     
     const body = await request.json();
     const { notificationIds, markAll } = body;
     
     if (markAll) {
-      const unreadCount = mockNotifications.filter(n => !n.read).length;
-      console.log(`✅ [API Notifications] Marcando todas (${unreadCount}) como leídas`);
+      // Marcar todas las notificaciones del usuario como leídas
+      const userNotifications = await memoryDB.getNotificationsByUserId(userId);
+      const unreadNotifications = userNotifications.filter(n => !n.read);
+      
+      let updatedCount = 0;
+      for (const notification of unreadNotifications) {
+        const success = await memoryDB.markNotificationAsRead(notification.id);
+        if (success) updatedCount++;
+      }
+      
+      console.log(`✅ [API Notifications] Marcadas ${updatedCount} notificaciones como leídas`);
       
       return NextResponse.json({
         success: true,
-        message: 'Todas las notificaciones marcadas como leídas (mock)',
-        updated: unreadCount,
-        source: 'mock_data'
+        message: 'Todas las notificaciones marcadas como leídas',
+        updated: updatedCount
       });
       
     } else if (notificationIds && Array.isArray(notificationIds)) {
-      console.log(`✅ [API Notifications] Marcando ${notificationIds.length} específicas como leídas`);
+      // Marcar notificaciones específicas como leídas
+      let updatedCount = 0;
+      
+      for (const notificationId of notificationIds) {
+        // Verificar que la notificación pertenece al usuario
+        const userNotifications = await memoryDB.getNotificationsByUserId(userId);
+        const notification = userNotifications.find(n => n.id === notificationId);
+        
+        if (notification && !notification.read) {
+          const success = await memoryDB.markNotificationAsRead(notificationId);
+          if (success) updatedCount++;
+        }
+      }
+      
+      console.log(`✅ [API Notifications] Marcadas ${updatedCount} notificaciones específicas como leídas`);
       
       return NextResponse.json({
         success: true,
-        updated: notificationIds.length,
-        source: 'mock_data',
-        message: 'Notificaciones específicas marcadas como leídas (mock)'
+        updated: updatedCount,
+        message: 'Notificaciones específicas marcadas como leídas'
       });
       
     } else {
@@ -200,17 +208,28 @@ export async function PATCH(request: NextRequest) {
       { 
         success: false,
         error: 'Error al actualizar notificaciones',
-        details: error.message 
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       },
       { status: 500 }
     );
   }
 }
 
-// DELETE: Eliminar notificación (mock)
+// DELETE: Eliminar notificación
 export async function DELETE(request: NextRequest) {
   try {
-    console.log('🗑️ [API Notifications] Eliminando notificación (modo desarrollo)');
+    // Verificar autenticación
+    const session = await getServerSession(authOptions);
+    const userId = session?.user?.id || request.headers.get('user-id');
+    
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'No autorizado. Por favor inicie sesión.' },
+        { status: 401 }
+      );
+    }
+
+    console.log('🗑️ [API Notifications] Eliminando notificación');
     
     const { searchParams } = new URL(request.url);
     const notificationId = searchParams.get('id');
@@ -225,13 +244,30 @@ export async function DELETE(request: NextRequest) {
       );
     }
     
-    console.log(`✅ [API Notifications] Notificación ${notificationId} eliminada (mock)`);
+    // Verificar que la notificación pertenece al usuario
+    const userNotifications = await memoryDB.getNotificationsByUserId(userId);
+    const notification = userNotifications.find(n => n.id === notificationId);
+    
+    if (!notification) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Notificación no encontrada o no autorizada' 
+        },
+        { status: 404 }
+      );
+    }
+    
+    // Por ahora solo marcamos como leída en lugar de eliminar
+    // Podrías agregar un método deleteNotification en memoryDB si lo necesitas
+    await memoryDB.markNotificationAsRead(notificationId);
+    
+    console.log(`✅ [API Notifications] Notificación ${notificationId} marcada como procesada`);
     
     return NextResponse.json({
       success: true,
-      message: 'Notificación eliminada (mock)',
-      deletedId: notificationId,
-      source: 'mock_data'
+      message: 'Notificación procesada',
+      deletedId: notificationId
     });
     
   } catch (error: any) {
@@ -240,7 +276,7 @@ export async function DELETE(request: NextRequest) {
       { 
         success: false,
         error: 'Error al eliminar notificación',
-        details: error.message 
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       },
       { status: 500 }
     );

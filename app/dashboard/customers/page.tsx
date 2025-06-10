@@ -93,7 +93,7 @@ export default function CustomersPage() {
       if (data.success) {
         setCustomers(data.data.customers);
         setTotalActive(data.data.metadata.total_active);
-        setAvailableTypes(data.data.metadata.available_customer_types);
+        setAvailableTypes(data.data.metadata.available_types || []);
       } else {
         console.error('Error fetching customers:', data.error);
       }

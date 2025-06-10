@@ -1,0 +1,127 @@
+{
+  "timestamp": "2025-06-10T14:04:46.556092",
+  "summary": {
+    "health": false,
+    "auth": false,
+    "database_apis": false,
+    "frontend": false,
+    "mcp": false,
+    "resources": true,
+    "postgresql": false
+  },
+  "success_rate": 14.285714285714285,
+  "detailed_results": [
+    {
+      "endpoint": "/api/health",
+      "method": "GET",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: /api/health (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc27e3020>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/api/health"
+    },
+    {
+      "endpoint": "/api/auth/callback/credentials",
+      "method": "POST",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: /api/auth/callback/credentials (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc27e1460>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/api/auth/callback/credentials"
+    },
+    {
+      "endpoint": "/api/dashboard/stats",
+      "method": "GET",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: /api/dashboard/stats (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc27e3470>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/api/dashboard/stats"
+    },
+    {
+      "endpoint": "/api/suppliers",
+      "method": "GET",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: /api/suppliers (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc27e37d0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/api/suppliers"
+    },
+    {
+      "endpoint": "/api/customers",
+      "method": "GET",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: /api/customers (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc27e3b00>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/api/customers"
+    },
+    {
+      "endpoint": "/api/documents/list",
+      "method": "GET",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: /api/documents/list (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc27e3e60>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/api/documents/list"
+    },
+    {
+      "endpoint": "/api/audit/logs",
+      "method": "GET",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: /api/audit/logs (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc2820200>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/api/audit/logs"
+    },
+    {
+      "endpoint": "/",
+      "method": "GET",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: / (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc28205c0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/"
+    },
+    {
+      "endpoint": "/auth/login",
+      "method": "GET",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: /auth/login (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc28209e0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/auth/login"
+    },
+    {
+      "endpoint": "/dashboard",
+      "method": "GET",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: /dashboard (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc2820e00>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/dashboard"
+    },
+    {
+      "endpoint": "/dashboard/documents",
+      "method": "GET",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: /dashboard/documents (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc28211f0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/dashboard/documents"
+    },
+    {
+      "endpoint": "/dashboard/suppliers",
+      "method": "GET",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: /dashboard/suppliers (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc27e3ef0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/dashboard/suppliers"
+    },
+    {
+      "endpoint": "/dashboard/customers",
+      "method": "GET",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: /dashboard/customers (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc27e3620>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/dashboard/customers"
+    },
+    {
+      "endpoint": "/dashboard/automation",
+      "method": "GET",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: /dashboard/automation (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc27e34a0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/dashboard/automation"
+    },
+    {
+      "endpoint": "/api/mcp/execute",
+      "method": "GET",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: /api/mcp/execute (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc2820f50>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/api/mcp/execute"
+    },
+    {
+      "endpoint": "/api/mcp/portal",
+      "method": "GET",
+      "success": false,
+      "error": "HTTPConnectionPool(host='localhost', port=3003): Max retries exceeded with url: /api/mcp/portal (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x765dc2820830>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "url": "http://localhost:3003/api/mcp/portal"
+    }
+  ]
+}

@@ -5,82 +5,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { PostgreSQLClient } from '@/lib/postgresql-client';
+import { memoryDB } from '@/lib/memory-db';
 
-const pgClient = new PostgreSQLClient();
-
-// Tipos para la configuración
-interface SystemConfiguration {
-  company: {
-    name: string;
-    cif: string;
-    address: string;
-    phone: string;
-    email: string;
-    logo_url?: string;
-  };
-  apis: {
-    mistral_api_key: string;
-    openai_api_key: string;
-    openrouter_api_key?: string;
-    stripe_api_key?: string;
-  };
-  notifications: {
-    email_enabled: boolean;
-    push_enabled: boolean;
-    vencimientos_dias: number;
-    alertas_criticas: boolean;
-  };
-  backup: {
-    auto_backup_enabled: boolean;
-    backup_frequency_days: number;
-    backup_retention_days: number;
-    backup_location: string;
-  };
-  advanced: {
-    debug_mode: boolean;
-    api_rate_limit: number;
-    max_file_size_mb: number;
-    allowed_file_types: string[];
-    ocr_language: string;
-  };
-}
-
-// Configuración por defecto
-const defaultConfig: SystemConfiguration = {
-  company: {
-    name: 'Mi Gestoría',
-    cif: '',
-    address: '',
-    phone: '',
-    email: ''
-  },
-  apis: {
-    mistral_api_key: process.env.MISTRAL_API_KEY || '',
-    openai_api_key: process.env.OPENAI_API_KEY || '',
-    openrouter_api_key: process.env.OPENROUTER_API_KEY || '',
-    stripe_api_key: process.env.STRIPE_API_KEY || ''
-  },
-  notifications: {
-    email_enabled: true,
-    push_enabled: true,
-    vencimientos_dias: 30,
-    alertas_criticas: true
-  },
-  backup: {
-    auto_backup_enabled: false,
-    backup_frequency_days: 7,
-    backup_retention_days: 30,
-    backup_location: 'local'
-  },
-  advanced: {
-    debug_mode: process.env.NODE_ENV === 'development',
-    api_rate_limit: 100,
-    max_file_size_mb: 10,
-    allowed_file_types: ['pdf', 'jpg', 'jpeg', 'png'],
-    ocr_language: 'es'
-  }
-};
 
 export const dynamic = 'force-dynamic';
 
@@ -98,57 +24,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Permisos insuficientes' }, { status: 403 });
     }
 
-    try {
-      // Intentar obtener configuración de PostgreSQL
-      const configQuery = `
-        SELECT config_data 
-        FROM system_configuration 
-        WHERE id = 1
-      `;
-      
-      const result = await pgClient.query<{ config_data: SystemConfiguration }>(configQuery, []);
-
-      if (result.data && result.data.length > 0) {
-        const config = result.data[0].config_data;
-        
-        // Ocultar claves API para usuarios que no son admin
-        if (userRole !== 'admin') {
-          config.apis = {
-            mistral_api_key: config.apis.mistral_api_key ? '***' : '',
-            openai_api_key: config.apis.openai_api_key ? '***' : '',
-            openrouter_api_key: config.apis.openrouter_api_key ? '***' : '',
-            stripe_api_key: config.apis.stripe_api_key ? '***' : ''
-          };
-        }
-
-        return NextResponse.json({
-          success: true,
-          data: config,
-          source: 'database'
-        });
-      }
-    } catch (error) {
-      console.warn('Error obteniendo configuración de PostgreSQL:', error);
-    }
-
-    // Fallback a configuración por defecto
-    const safeConfig = { ...defaultConfig };
-    
-    // Ocultar claves API para usuarios que no son admin
-    if (userRole !== 'admin') {
-      safeConfig.apis = {
-        mistral_api_key: safeConfig.apis.mistral_api_key ? '***' : '',
-        openai_api_key: safeConfig.apis.openai_api_key ? '***' : '',
-        openrouter_api_key: safeConfig.apis.openrouter_api_key ? '***' : '',
-        stripe_api_key: safeConfig.apis.stripe_api_key ? '***' : ''
-      };
-    }
+    // Obtener configuración del memory database
+    const config = await memoryDB.getSafeSystemConfiguration(userRole === 'admin');
 
     return NextResponse.json({
       success: true,
-      data: safeConfig,
-      source: 'default',
-      message: 'Usando configuración por defecto'
+      data: config,
+      source: 'memory_db'
     });
 
   } catch (error) {
@@ -192,54 +74,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    try {
-      // Obtener configuración actual
-      let currentConfig = defaultConfig;
-      const configQuery = `
-        SELECT config_data 
-        FROM system_configuration 
-        WHERE id = 1
-      `;
-      
-      const result = await pgClient.query<{ config_data: SystemConfiguration }>(configQuery, []);
-      if (result.data && result.data.length > 0) {
-        currentConfig = result.data[0].config_data;
-      }
+    // Actualizar configuración en memory database
+    const updatedConfig = await memoryDB.updateSystemConfiguration(section, data);
 
-      // Actualizar la sección específica
-      const updatedConfig = {
-        ...currentConfig,
-        [section]: { ...(currentConfig as any)[section], ...data }
-      };
+    // Registrar en auditoría
+    await memoryDB.createAuditLog({
+      entity_type: 'system_configuration',
+      entity_id: section,
+      action: 'updated',
+      user_id: session.user?.id || 'unknown',
+      changes: {
+        section,
+        data
+      },
+      notes: `Configuración de ${section} actualizada`
+    });
 
-      // Guardar configuración actualizada
-      const upsertQuery = `
-        INSERT INTO system_configuration (id, config_data, updated_at)
-        VALUES (1, $1, NOW())
-        ON CONFLICT (id) 
-        DO UPDATE SET 
-          config_data = $1,
-          updated_at = NOW()
-      `;
+    console.log(`✅ [CONFIG] Sección ${section} actualizada correctamente`);
 
-      await pgClient.query(upsertQuery, [JSON.stringify(updatedConfig)]);
-
-      console.log(`✅ [CONFIG] Sección ${section} actualizada correctamente`);
-
-      return NextResponse.json({
-        success: true,
-        message: `Configuración de ${section} actualizada correctamente`,
-        updated_section: section
-      });
-
-    } catch (postgresqlError) {
-      console.error('Error de PostgreSQL:', postgresqlError);
-      return NextResponse.json({
-        success: false,
-        message: 'Error guardando configuración en base de datos',
-        fallback: true
-      }, { status: 500 });
-    }
+    return NextResponse.json({
+      success: true,
+      message: `Configuración de ${section} actualizada correctamente`,
+      updated_section: section,
+      source: 'memory_db'
+    });
 
   } catch (error) {
     console.error('Error en POST /api/configuration:', error);
@@ -263,31 +121,25 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Solo administradores pueden restablecer configuración' }, { status: 403 });
     }
 
-    try {
-      const resetQuery = `
-        INSERT INTO system_configuration (id, config_data, updated_at)
-        VALUES (1, $1, NOW())
-        ON CONFLICT (id) 
-        DO UPDATE SET 
-          config_data = $1,
-          updated_at = NOW()
-      `;
+    // Restablecer configuración en memory database
+    const resetConfig = await memoryDB.resetSystemConfiguration();
 
-      await pgClient.query(resetQuery, [JSON.stringify(defaultConfig)]);
+    // Registrar en auditoría
+    await memoryDB.createAuditLog({
+      entity_type: 'system_configuration',
+      entity_id: 'all',
+      action: 'reset',
+      user_id: session.user?.id || 'unknown',
+      changes: resetConfig,
+      notes: 'Configuración restablecida a valores por defecto'
+    });
 
-      return NextResponse.json({
-        success: true,
-        message: 'Configuración restablecida a valores por defecto',
-        data: defaultConfig
-      });
-
-    } catch (postgresqlError) {
-      console.error('Error restableciendo configuración:', postgresqlError);
-      return NextResponse.json(
-        { error: 'Error restableciendo configuración en base de datos' },
-        { status: 500 }
-      );
-    }
+    return NextResponse.json({
+      success: true,
+      message: 'Configuración restablecida a valores por defecto',
+      data: resetConfig,
+      source: 'memory_db'
+    });
 
   } catch (error) {
     console.error('Error en PUT /api/configuration:', error);

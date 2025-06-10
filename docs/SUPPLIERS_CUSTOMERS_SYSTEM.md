@@ -191,7 +191,7 @@ Desactivar cliente
 ```mermaid
 graph TD
     A[Upload PDF] --> B[Mistral OCR]
-    B --> C[GPT-4o Validation]
+    B --> C[Mistral Document AI Processing]
     C --> D[Extract Supplier/Customer Data]
     D --> E[Find or Create Supplier]
     E --> F[Find or Create Customer]

@@ -85,6 +85,7 @@ export class AuditService {
    */
   static async logAction(data: AuditLogData): Promise<string | null> {
     try {
+      // Try to use PostgreSQL function first
       const result = await pool.query(`
         SELECT log_audit_action(
           $1::UUID,

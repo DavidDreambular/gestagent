@@ -2,11 +2,7 @@
 // /app/api/documents/[jobId]/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { GetDocumentQuery } from '@/application/document/get-document.query';
-import { GetDocumentQueryHandler } from '@/application/document/get-document.handler';
-import { UpdateDocumentCommand } from '@/application/document/update-document.command';
-import { UpdateDocumentCommandHandler } from '@/application/document/update-document.handler';
-import { documentRepository, auditLogRepository } from '@/api-ddd/dependencies';
+import pgClient from '@/lib/postgresql-client';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
@@ -40,22 +36,28 @@ export async function GET(
 
     console.log(`[GET Document] Buscando documento ${jobId} para usuario ${userId}`);
 
-    // Crear handler de consulta
-    const getDocumentHandler = new GetDocumentQueryHandler(documentRepository);
+    // No necesita verificar conexión, usar pgClient directamente
+
+    // Usar dbAdapter en lugar de pgClient directo para compatibilidad
+    const { dbAdapter } = await import('@/lib/db-adapter');
+    await dbAdapter.initialize();
     
-    // Ejecutar consulta
-    const query = new GetDocumentQuery(jobId, userId);
-    const document = await getDocumentHandler.handle(query);
+    const documentResult = await dbAdapter.query(
+      'SELECT * FROM documents WHERE job_id = $1',
+      [jobId]
+    );
     
-    if (!document) {
+    if (!documentResult.rows || documentResult.rows.length === 0) {
       return NextResponse.json(
         { error: 'Documento no encontrado' },
         { status: 404 }
       );
     }
 
+    const document = documentResult.rows[0];
+
     // Verificar que el documento pertenece al usuario
-    if (document.userId !== userId && !session?.user?.role?.includes('admin')) {
+    if (document.user_id !== userId && !session?.user?.role?.includes('admin')) {
       return NextResponse.json(
         { error: 'No tiene permisos para ver este documento' },
         { status: 403 }
@@ -66,16 +68,16 @@ export async function GET(
 
     // Formatear respuesta
     const response = {
-      jobId: document.jobId,
-      documentType: document.documentType,
-      fileName: document.fileName || 'documento.pdf',
+      jobId: document.job_id,
+      documentType: document.document_type,
+      fileName: document.file_path?.split('/').pop() || 'documento.pdf',
       status: document.status,
-      uploadDate: document.uploadTimestamp,
-      processedData: document.processedJson,
-      metadata: document.metadata,
-      emitterName: document.emitterName,
-      receiverName: document.receiverName,
-      documentDate: document.documentDate,
+      uploadDate: document.upload_timestamp,
+      processedData: document.processed_json,
+      metadata: document.processing_metadata,
+      emitterName: document.emitter_name,
+      receiverName: document.receiver_name,
+      documentDate: document.document_date,
       version: document.version
     };
 
@@ -123,40 +125,59 @@ export async function PUT(
 
     console.log(`[PUT Document] Actualizando documento ${jobId}`);
 
-    // Verificar que el documento existe y pertenece al usuario
-    const getDocumentHandler = new GetDocumentQueryHandler(documentRepository);
-    const existingDocument = await getDocumentHandler.handle(new GetDocumentQuery(jobId, userId));
+    // No necesita verificar conexión, usar pgClient directamente
+
+    // Usar dbAdapter para compatibilidad
+    const { dbAdapter } = await import('@/lib/db-adapter');
+    await dbAdapter.initialize();
     
-    if (!existingDocument) {
+    const documentResult = await dbAdapter.query(
+      'SELECT * FROM documents WHERE job_id = $1',
+      [jobId]
+    );
+    
+    if (!documentResult.rows || documentResult.rows.length === 0) {
       return NextResponse.json(
         { error: 'Documento no encontrado' },
         { status: 404 }
       );
     }
 
-    if (existingDocument.userId !== userId && !session?.user?.role?.includes('admin')) {
+    const existingDocument = documentResult.rows[0];
+
+    if (existingDocument.user_id !== userId && !session?.user?.role?.includes('admin')) {
       return NextResponse.json(
         { error: 'No tiene permisos para actualizar este documento' },
         { status: 403 }
       );
     }
 
-    // Crear handler de actualización
-    const updateDocumentHandler = new UpdateDocumentCommandHandler(
-      documentRepository,
-      auditLogRepository
-    );
-    
-    // Crear comando de actualización
-    const command = new UpdateDocumentCommand(
+    // Actualizar documento usando dbAdapter
+    const updateQuery = `
+      UPDATE documents 
+      SET processed_json = $2,
+          status = $3,
+          emitter_name = $4,
+          receiver_name = $5
+      WHERE job_id = $1
+    `;
+
+    const updateValues = [
       jobId,
-      userId,
-      body.processedData || body.processedJson,
-      body.metadata
-    );
-    
-    // Ejecutar actualización
-    await updateDocumentHandler.handle(command);
+      JSON.stringify(body.processedData || body.processedJson || existingDocument.processed_json),
+      body.status || existingDocument.status,
+      body.emitterName || existingDocument.emitter_name,
+      body.receiverName || existingDocument.receiver_name
+    ];
+
+    const updateResult = await dbAdapter.query(updateQuery, updateValues);
+
+    if (updateResult.rowCount === 0) {
+      return NextResponse.json(
+        { error: 'Error al actualizar el documento' },
+        { status: 500 }
+      );
+    }
     
     console.log(`[PUT Document] Documento ${jobId} actualizado exitosamente`);
 
@@ -214,18 +235,27 @@ export async function DELETE(
 
     console.log(`[DELETE Document] Eliminando documento ${jobId}`);
 
-    // Verificar que el documento existe y pertenece al usuario
-    const getDocumentHandler = new GetDocumentQueryHandler(documentRepository);
-    const existingDocument = await getDocumentHandler.handle(new GetDocumentQuery(jobId, userId));
+    // No necesita verificar conexión, usar pgClient directamente
+
+    // Usar dbAdapter para compatibilidad
+    const { dbAdapter } = await import('@/lib/db-adapter');
+    await dbAdapter.initialize();
     
-    if (!existingDocument) {
+    const documentResult = await dbAdapter.query(
+      'SELECT * FROM documents WHERE job_id = $1',
+      [jobId]
+    );
+    
+    if (!documentResult.rows || documentResult.rows.length === 0) {
       return NextResponse.json(
         { error: 'Documento no encontrado' },
         { status: 404 }
       );
     }
 
-    if (existingDocument.userId !== userId && !session?.user?.role?.includes('admin')) {
+    const existingDocument = documentResult.rows[0];
+
+    if (existingDocument.user_id !== userId && !session?.user?.role?.includes('admin')) {
       return NextResponse.json(
         { error: 'No tiene permisos para eliminar este documento' },
         { status: 403 }
@@ -238,28 +268,21 @@ export async function DELETE(
 
     if (forceDelete) {
       // Hard delete - eliminar completamente de la base de datos
-      await documentRepository.delete(jobId);
-      console.log(`[DELETE Document] Documento ${jobId} eliminado permanentemente`);
+      const deleteResult = await dbAdapter.query('DELETE FROM documents WHERE job_id = $1', [jobId]);
+      
+      if (deleteResult.rowCount > 0) {
+        console.log(`[DELETE Document] Documento ${jobId} eliminado permanentemente`);
+      }
     } else {
       // Soft delete - marcar como eliminado
-      const updateHandler = new UpdateDocumentCommandHandler(
-        documentRepository,
-        auditLogRepository
+      const updateResult = await dbAdapter.query(
+        'UPDATE documents SET status = $2 WHERE job_id = $1',
+        [jobId, 'deleted']
       );
       
-      const command = new UpdateDocumentCommand(
-        jobId,
-        userId,
-        null,
-        { 
-          deleted: true, 
-          deletedAt: new Date().toISOString(), 
-          deletedBy: userId 
-        }
-      );
-      
-      await updateHandler.handle(command);
-      console.log(`[DELETE Document] Documento ${jobId} marcado como eliminado`);
+      if (updateResult.rowCount > 0) {
+        console.log(`[DELETE Document] Documento ${jobId} marcado como eliminado`);
+      }
     }
 
     return NextResponse.json({

@@ -16,6 +16,7 @@ import {
   Building2,
   UserCheck,
   Shield,
+  Workflow,
 } from 'lucide-react';
 
 export function Sidebar() {
@@ -84,6 +85,12 @@ export function Sidebar() {
       href: '/dashboard/configuration',
       icon: Settings,
       roles: ['admin'],
+    },
+    {
+      name: 'Automatización',
+      href: '/dashboard/automation',
+      icon: Workflow,
+      roles: ['admin', 'supervisor'],
     },
   ];
 

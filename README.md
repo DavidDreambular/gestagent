@@ -11,10 +11,11 @@
 ## 🎯 **Características Principales**
 
 ### 🤖 **Procesamiento Inteligente con IA**
-- **Mistral Document AI**: OCR avanzado y extracción de datos estructurados
-- **GPT-4o**: Validación y estructuración de información extraída
+- **Mistral Document AI**: OCR avanzado y extracción de datos estructurados con Document Understanding API
+- **Procesamiento Inteligente**: Análisis PDF automático para determinar estrategia óptima de procesamiento
 - **Plantillas Inteligentes**: Sistema que aprende de correcciones para mejores extracciones futuras
 - **Detección de Duplicados**: Previene procesamiento de documentos repetidos
+- **Multi-documento**: Capacidad de procesar PDFs con múltiples facturas
 
 ### 👥 **Gestión Completa de Usuarios**
 - **Roles Granulares**: Admin, Contable, Gestor, Operador, Supervisor
@@ -64,10 +65,11 @@
 - **Almacenamiento**: Sistema híbrido (DB + archivos)
 
 ### **Inteligencia Artificial**
-- **OCR Primario**: Mistral Document AI para extracción inicial
-- **Validación**: GPT-4o para estructuración y corrección
+- **Motor Principal**: Mistral Document AI con Document Understanding API
+- **Análisis Inteligente**: Sistema de análisis PDF para optimizar procesamiento
 - **Aprendizaje**: Sistema de plantillas que mejora con el uso
 - **Procesamiento**: Paralelo y asíncrono para máximo rendimiento
+- **Multi-estrategia**: Adaptación automática según tipo de documento
 
 ## 🚀 **Instalación y Configuración**
 
@@ -76,7 +78,7 @@
 # Requerimientos del sistema
 - Node.js 18.0+
 - PostgreSQL 15+
-- API Keys: Mistral AI, OpenAI (GPT-4o)
+- API Key: Mistral AI
 ```
 
 ### **1. Clonar el Repositorio**
@@ -107,7 +109,6 @@ cp .env.example .env.local
 # Configurar las siguientes variables:
 DATABASE_URL="postgresql://user:password@localhost:5432/gestagent"
 MISTRAL_API_KEY="tu_api_key_mistral"
-OPENAI_API_KEY="tu_api_key_openai"
 NEXTAUTH_SECRET="tu_secret_jwt"
 NEXTAUTH_URL="http://localhost:3000"
 ```

@@ -56,8 +56,14 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      suppliers: suppliers || [],
-      total: totalCount,
+      data: {
+        suppliers: suppliers || [],
+        metadata: {
+          total: totalCount,
+          total_active: suppliers?.filter((s: any) => s.status === 'active').length || 0,
+          available_sectors: [...new Set(suppliers?.map((s: any) => s.business_sector).filter(Boolean) || [])]
+        }
+      },
       pagination: {
         limit,
         offset,

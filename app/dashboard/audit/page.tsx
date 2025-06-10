@@ -31,8 +31,7 @@ import {
   DialogTrigger
 } from '@/components/ui/dialog';
 import { CalendarIcon, Download, Filter, Search, MoreHorizontal, Eye, RefreshCw } from 'lucide-react';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { formatSafeDate } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 
 interface AuditLog {
@@ -219,14 +218,14 @@ export default function AuditPage() {
             <div className="space-y-2">
               <Label>Usuario</Label>
               <Select 
-                value={filters.userId || ''} 
-                onValueChange={(value) => setFilters(prev => ({ ...prev, userId: value || undefined }))}
+                value={filters.userId || 'all'} 
+                onValueChange={(value) => setFilters(prev => ({ ...prev, userId: value === 'all' ? undefined : value }))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Todos los usuarios" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos los usuarios</SelectItem>
+                  <SelectItem value="all">Todos los usuarios</SelectItem>
                   {users.map(user => (
                     <SelectItem key={user.user_id} value={user.user_id}>
                       {user.username} ({user.email})
@@ -240,14 +239,14 @@ export default function AuditPage() {
             <div className="space-y-2">
               <Label>Acción</Label>
               <Select 
-                value={filters.action || ''} 
-                onValueChange={(value) => setFilters(prev => ({ ...prev, action: value || undefined }))}
+                value={filters.action || 'all'} 
+                onValueChange={(value) => setFilters(prev => ({ ...prev, action: value === 'all' ? undefined : value }))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Todas las acciones" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todas las acciones</SelectItem>
+                  <SelectItem value="all">Todas las acciones</SelectItem>
                   <SelectItem value="CREATE">Crear</SelectItem>
                   <SelectItem value="UPDATE">Actualizar</SelectItem>
                   <SelectItem value="DELETE">Eliminar</SelectItem>
@@ -263,14 +262,14 @@ export default function AuditPage() {
             <div className="space-y-2">
               <Label>Tipo de entidad</Label>
               <Select 
-                value={filters.entityType || ''} 
-                onValueChange={(value) => setFilters(prev => ({ ...prev, entityType: value || undefined }))}
+                value={filters.entityType || 'all'} 
+                onValueChange={(value) => setFilters(prev => ({ ...prev, entityType: value === 'all' ? undefined : value }))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Todos los tipos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos los tipos</SelectItem>
+                  <SelectItem value="all">Todos los tipos</SelectItem>
                   <SelectItem value="documents">Documentos</SelectItem>
                   <SelectItem value="users">Usuarios</SelectItem>
                   <SelectItem value="suppliers">Proveedores</SelectItem>
@@ -406,7 +405,7 @@ export default function AuditPage() {
                   logs.map((log) => (
                     <TableRow key={log.id}>
                       <TableCell>
-                        {format(new Date(log.created_at), "dd/MM/yyyy HH:mm:ss", { locale: es })}
+                        {formatSafeDate(log.created_at)}
                       </TableCell>
                       <TableCell>
                         <div>

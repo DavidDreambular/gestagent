@@ -118,7 +118,7 @@ export default function DocumentsPage() {
     }
 
     try {
-      const response = await fetch(`/api/documents/${documentId}`, {
+      const response = await fetch(`/api/documents/delete/${documentId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -126,11 +126,12 @@ export default function DocumentsPage() {
       });
       
       if (response.ok) {
+        const result = await response.json();
         setDocuments(documents.filter(doc => doc.job_id !== documentId));
-        alert('Documento eliminado exitosamente');
+        alert(`Documento eliminado exitosamente (${result.deleteType === 'hard' ? 'permanente' : 'marcado como eliminado'})`);
       } else {
         const errorData = await response.json();
-        alert(`Error al eliminar el documento: ${errorData.message || 'Error desconocido'}`);
+        alert(`Error al eliminar el documento: ${errorData.error || 'Error desconocido'}`);
       }
     } catch (error) {
       console.error('Error deleting document:', error);

@@ -240,10 +240,10 @@ async function processDocumentWithMistral(
     const query = `
       INSERT INTO documents (
         job_id, document_type, raw_json, processed_json, upload_timestamp, user_id, 
-        status, receiver_name, document_date, total_amount, tax_amount, 
+        status, emitter_name, receiver_name, document_date, total_amount, tax_amount, 
         title, file_path, processing_metadata, created_at, updated_at
       ) VALUES (
-        $1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()
+        $1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW()
       ) RETURNING job_id
     `;
 
@@ -266,6 +266,7 @@ async function processDocumentWithMistral(
       JSON.stringify(mistralResult.extracted_data),
       job.userId,
       'completed',
+      emitterName,
       receiverName,
       documentDate,
       totalAmount ? parseFloat(totalAmount.toString()) : null,
@@ -391,9 +392,9 @@ export async function POST(request: NextRequest) {
     let totalSize = 0;
 
     formData.forEach((value, key) => {
-      if (key === 'files' && value instanceof File) {
-        files.push(value);
-        totalSize += value.size;
+      if (key === 'files' && value && typeof value === 'object' && 'name' in value && 'size' in value && 'type' in value) {
+        files.push(value as File);
+        totalSize += (value as File).size;
       }
     });
 
