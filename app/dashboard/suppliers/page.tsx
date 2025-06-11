@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   Building2, 
   Search, 
@@ -26,9 +27,11 @@ import {
   TrendingUp,
   Users,
   Activity,
-  AlertCircle
+  AlertCircle,
+  Receipt
 } from 'lucide-react';
 import Link from 'next/link';
+import { InvoiceHistory } from '@/components/entities/InvoiceHistory';
 
 interface Supplier {
   supplier_id: string;
@@ -62,6 +65,8 @@ export default function SuppliersPage() {
   const [sortOrder, setSortOrder] = useState('desc');
   const [totalActive, setTotalActive] = useState(0);
   const [availableSectors, setAvailableSectors] = useState<string[]>([]);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
+  const [showInvoiceHistory, setShowInvoiceHistory] = useState(false);
 
   const fetchSuppliers = async () => {
     try {
@@ -394,6 +399,19 @@ export default function SuppliersPage() {
                       <Button
                         variant="outline"
                         size="sm"
+                        onClick={() => {
+                          setSelectedSupplier(supplier);
+                          setShowInvoiceHistory(true);
+                        }}
+                        className="flex items-center gap-1"
+                      >
+                        <Receipt className="h-3 w-3" />
+                        Facturas
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
                         className="flex items-center gap-1"
                       >
                         <Download className="h-3 w-3" />
@@ -495,6 +513,24 @@ export default function SuppliersPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Modal de historial de facturas */}
+      <Dialog open={showInvoiceHistory} onOpenChange={setShowInvoiceHistory}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Historial de Facturas - {selectedSupplier?.name}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedSupplier && (
+            <InvoiceHistory
+              entityType="supplier"
+              entityId={selectedSupplier.supplier_id}
+              entityName={selectedSupplier.name}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

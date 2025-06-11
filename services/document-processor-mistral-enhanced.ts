@@ -45,7 +45,7 @@ export class EnhancedMistralProcessor {
   private readonly mistralApiKey: string;
   private readonly maxRetries: number = 3;
   private readonly baseUrl: string = 'https://api.mistral.ai/v1';
-  private readonly model: string = 'mistral-ocr-latest';
+  private readonly model: string = 'mistral-small-latest';
 
   constructor() {
     this.mistralApiKey = process.env.MISTRAL_API_KEY || '';
@@ -245,12 +245,81 @@ FORMATO DE RESPUESTA (JSON válido):
     if (enhanced) {
       return basePrompt + `
 
+DICCIONARIO EXPANDIDO DE ETIQUETAS (Catalán y Castellano):
+
+PROVEEDOR/EMISOR:
+- Emisor, Emitente, Proveedor, Supplier, Suministrador
+- Factura de, De parte de, Emès per, Emitent
+- Empresa emisora, Companyia emissora
+- Remitent, Expedidor, Vendedor, Venedor
+
+CLIENTE/DESTINATARIO:
+- Cliente, Client, Destinatario, Destinatari
+- Para, Per a, A favor de, A l'atenció de
+- Comprador, Comprador, Cliente final
+- Receptor, Rebedor, Adquirente, Adquirent
+
+FECHA:
+- Fecha, Data, Date, Fecha de emisión, Data d'emissió
+- Fecha de factura, Data de factura, F. Emisión, Data emissió
+- Emitida el, Emesa el, Expedida el, Expedida el
+
+NÚMERO FACTURA:
+- Número, Núm., No., Número factura, Número de factura
+- Invoice number, Factura núm., Factura número
+- Núm. fac., N. factura, Ref., Referencia
+
+IMPORTE:
+- Total, Import total, Importe total, Total a pagar
+- Total factura, Import factura, Suma total
+- Líquido a percibir, Net a cobrar, Total EUR
+- Quantitat total, Total amount
+
+IVA/IMPUESTOS:
+- IVA, I.V.A., Impuesto, Impost, Tax
+- IVA 21%, IVA 10%, IVA 4%, Exempt IVA
+- Recarrec equivalència, Recargo equivalencia
+- IRPF, Retenció IRPF, Retención
+
+BASE IMPONIBLE:
+- Base, Base imponible, Base imposable
+- Subtotal, Import base, Neto
+- Base gravable, Base tributaria
+
+DIRECCIONES:
+- Dirección, Direcció, Address, Domicilio
+- Calle, Carrer, Avda., Avinguda, Plaza, Plaça
+- C.P., Código postal, Codi postal
+- Población, Població, Ciudad, Ciutat
+- Provincia, Província, País, State
+
 CAMPOS ADICIONALES A BUSCAR:
 - Códigos de producto/servicio
 - Descuentos aplicados
 - Retenciones
-- Números de pedido/albarán
+- Números de pedido/albarán  
 - Formas de pago específicas
+
+IMPORTANTE EXTRACCIÓN MÚLTIPLE:
+- Si el documento contiene MÚLTIPLES facturas, extraer CADA UNA por separado
+- Identificar TODOS los proveedores/emisores diferentes en el lote
+- Identificar TODOS los clientes/destinatarios diferentes en el lote
+- NO resumir ni combinar facturas - mantener separadas
+- Asignar números secuenciales a facturas sin número visible
+
+PATRONES ADICIONALES CATALÁN:
+- Emisor: "Emès per", "Emitent", "Proveïdor"
+- Cliente: "Destinatari", "Client", "Per a l'atenció de"
+- Fecha: "Data d'emissió", "Emesa el", "Data de factura"
+- Total: "Import total", "Quantitat total", "Total a pagar"
+- NIF: "N.I.F.", "Núm. Identificació Fiscal"
+
+PATRONES ADICIONALES ESPAÑOL:
+- Emisor: "Emitido por", "Razón social", "Empresa"
+- Cliente: "Facturado a", "A la atención de", "Destinatario"
+- Fecha: "F. emisión", "Expedida el", "Fecha factura" 
+- Total: "Importe total", "Líquido a percibir", "Total factura"
+- NIF: "N.I.F.", "Núm. Identificación Fiscal", "CIF"
 - Vencimientos múltiples
 - Referencias bancarias
 - Comentarios o observaciones

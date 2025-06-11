@@ -19,7 +19,8 @@ import {
   CheckSquare,
   Square,
   PackagePlus,
-  FileDown
+  FileDown,
+  Layers
 } from 'lucide-react';
 import SageExportButton from '@/components/documents/SageExportButton';
 
@@ -269,10 +270,20 @@ export default function DocumentsPage() {
             Gestión de documentos financieros digitalizados
           </p>
         </div>
-        <Button onClick={handleNewDocument} className="gap-2">
-          <Upload className="h-4 w-4" />
-          Nuevo Documento
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => router.push('/dashboard/documents/new?batch=true')} 
+            className="gap-2"
+          >
+            <Layers className="h-4 w-4" />
+            Procesamiento Masivo
+          </Button>
+          <Button onClick={handleNewDocument} className="gap-2">
+            <Upload className="h-4 w-4" />
+            Nuevo Documento
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">

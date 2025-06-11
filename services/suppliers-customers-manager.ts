@@ -4,6 +4,8 @@
 // POSTGRESQL COMPATIBLE VERSION
 console.log('🏢 [SuppliersManager] Inicializando con PostgreSQL/SQLite compatible');
 
+import { duplicateDetectionService } from './duplicate-detection.service';
+
 interface SupplierData {
   name: string;
   nif_cif?: string;
@@ -61,46 +63,70 @@ export class SuppliersCustomersManager {
       if (Array.isArray(invoiceData)) {
         console.log(`📋 [SuppliersManager] ${invoiceData.length} facturas detectadas en el array`);
         
-        // Usar un Set para evitar duplicados
-        const suppliersProcessed = new Set<string>();
-        const customersProcessed = new Set<string>();
+        // Usar Map para tracking detallado de proveedores/clientes únicos
+        const suppliersProcessed = new Map<string, string>(); // key -> supplier_id
+        const customersProcessed = new Map<string, string>(); // key -> customer_id
         
         for (let i = 0; i < invoiceData.length; i++) {
           const invoice = invoiceData[i];
           console.log(`📋 [SuppliersManager] Procesando factura ${i + 1}/${invoiceData.length}: ${invoice.invoice_number || 'Sin número'}`);
 
-          // Procesar proveedor si existe y no se ha procesado antes
+          // Procesar proveedor si existe
           if (invoice.supplier && invoice.supplier.name) {
-            const supplierKey = `${invoice.supplier.name}_${invoice.supplier.nif_cif || 'unknown'}`;
+            // Crear clave única más robusta
+            const supplierKey = this.createEntityKey(invoice.supplier.name, invoice.supplier.nif_cif);
+            
             if (!suppliersProcessed.has(supplierKey)) {
+              console.log(`🏢 [SuppliersManager] Nuevo proveedor detectado: ${invoice.supplier.name}`);
               const newSupplierId = await this.processSupplier(invoice.supplier, documentJobId);
               if (newSupplierId) {
-                supplier_id = supplier_id || newSupplierId; // Usar el primero encontrado como referencia principal
-                suppliersProcessed.add(supplierKey);
-                operations.push(`Proveedor ${i + 1} procesado: ${invoice.supplier.name}`);
+                suppliersProcessed.set(supplierKey, newSupplierId);
+                supplier_id = supplier_id || newSupplierId; // Primer proveedor como referencia principal
+                operations.push(`✅ Proveedor ${i + 1} procesado: ${invoice.supplier.name} (${invoice.supplier.nif_cif || 'Sin NIF'})`);
+              } else {
+                operations.push(`❌ Error procesando proveedor ${i + 1}: ${invoice.supplier.name}`);
               }
             } else {
-              operations.push(`Proveedor ${i + 1} ya existía: ${invoice.supplier.name}`);
+              const existingSupplierId = suppliersProcessed.get(supplierKey);
+              operations.push(`♻️ Proveedor ${i + 1} ya procesado: ${invoice.supplier.name} (ID: ${existingSupplierId})`);
             }
+          } else {
+            operations.push(`⚠️ Factura ${i + 1} sin datos de proveedor válidos`);
           }
 
-          // Procesar cliente si existe y no se ha procesado antes
+          // Procesar cliente si existe
           if (invoice.customer && invoice.customer.name) {
-            const customerKey = `${invoice.customer.name}_${invoice.customer.nif_cif || 'unknown'}`;
+            // Crear clave única más robusta
+            const customerKey = this.createEntityKey(invoice.customer.name, invoice.customer.nif_cif);
+            
             if (!customersProcessed.has(customerKey)) {
+              console.log(`👤 [SuppliersManager] Nuevo cliente detectado: ${invoice.customer.name}`);
               const newCustomerId = await this.processCustomer(invoice.customer, documentJobId);
               if (newCustomerId) {
-                customer_id = customer_id || newCustomerId; // Usar el primero encontrado como referencia principal
-                customersProcessed.add(customerKey);
-                operations.push(`Cliente ${i + 1} procesado: ${invoice.customer.name}`);
+                customersProcessed.set(customerKey, newCustomerId);
+                customer_id = customer_id || newCustomerId; // Primer cliente como referencia principal
+                operations.push(`✅ Cliente ${i + 1} procesado: ${invoice.customer.name} (${invoice.customer.nif_cif || 'Sin NIF'})`);
+              } else {
+                operations.push(`❌ Error procesando cliente ${i + 1}: ${invoice.customer.name}`);
               }
             } else {
-              operations.push(`Cliente ${i + 1} ya existía: ${invoice.customer.name}`);
+              const existingCustomerId = customersProcessed.get(customerKey);
+              operations.push(`♻️ Cliente ${i + 1} ya procesado: ${invoice.customer.name} (ID: ${existingCustomerId})`);
             }
+          } else {
+            operations.push(`⚠️ Factura ${i + 1} sin datos de cliente válidos`);
           }
         }
 
-        console.log(`✅ [SuppliersManager] Procesadas ${invoiceData.length} facturas: ${suppliersProcessed.size} proveedores únicos, ${customersProcessed.size} clientes únicos`);
+        console.log(`✅ [SuppliersManager] RESUMEN PROCESAMIENTO:`);
+        console.log(`   📊 Total facturas: ${invoiceData.length}`);
+        console.log(`   🏢 Proveedores únicos: ${suppliersProcessed.size}`);
+        console.log(`   👤 Clientes únicos: ${customersProcessed.size}`);
+        console.log(`   🎯 Proveedores procesados: ${Array.from(suppliersProcessed.values())}`);
+        console.log(`   🎯 Clientes procesados: ${Array.from(customersProcessed.values())}`);
+        
+        // Agregar resumen detallado a las operaciones
+        operations.push(`📊 RESUMEN: ${invoiceData.length} facturas, ${suppliersProcessed.size} proveedores únicos, ${customersProcessed.size} clientes únicos`);
       } else {
         // Si es una factura única
         const invoice = invoiceData;
@@ -147,6 +173,30 @@ export class SuppliersCustomersManager {
   private async processSupplier(supplierData: SupplierData, documentJobId: string): Promise<string | undefined> {
     try {
       console.log(`🔍 [SuppliersManager] Buscando proveedor con PostgreSQL: ${supplierData.name}`);
+      
+      // NUEVO: Verificar duplicados antes de procesar
+      const duplicateCheck = await duplicateDetectionService.findDuplicateSupplier({
+        name: supplierData.name,
+        nif_cif: supplierData.nif_cif,
+        address: supplierData.address,
+        phone: supplierData.phone,
+        email: supplierData.email
+      });
+      
+      if (duplicateCheck.has_duplicates) {
+        console.log(`⚠️ [SuppliersManager] Duplicados detectados: ${duplicateCheck.candidates.length} candidatos`);
+        
+        // Si hay alta confianza en un duplicado, usar ese ID
+        if (duplicateCheck.recommended_action === 'merge' && duplicateCheck.candidates.length > 0) {
+          const bestMatch = duplicateCheck.candidates[0];
+          console.log(`✅ [SuppliersManager] Usando proveedor existente: ${bestMatch.name} (${bestMatch.similarity_score * 100}% match)`);
+          
+          // Registrar en invoice_entities
+          await this.linkInvoiceToSupplier(documentJobId, bestMatch.entity_id);
+          
+          return bestMatch.entity_id;
+        }
+      }
 
       // Limpiar y truncar datos para evitar errores de BD
       const cleanSupplierData = {
@@ -672,6 +722,22 @@ export class SuppliersCustomersManager {
   }
 
   /**
+   * Crea una clave única para entidades (proveedores/clientes)
+   */
+  private createEntityKey(name: string, nifCif?: string): string {
+    const cleanName = this.cleanName(name);
+    const cleanNif = nifCif?.trim().toUpperCase() || '';
+    
+    // Si hay NIF/CIF, usarlo como clave principal
+    if (cleanNif && cleanNif !== 'UNKNOWN' && cleanNif.length > 0) {
+      return `NIF_${cleanNif}`;
+    }
+    
+    // Si no hay NIF, usar nombre limpio
+    return `NAME_${cleanName}`;
+  }
+
+  /**
    * Limpia nombre para búsqueda (elimina caracteres especiales, etc.)
    */
   private cleanName(name: string): string {
@@ -820,6 +886,84 @@ export class SuppliersCustomersManager {
     } catch (error) {
       console.error('❌ [SuppliersManager] Error obteniendo stats de proveedores:', error);
       return { total: 0, active: 0, new_this_month: 0, top_sectors: [] };
+    }
+  }
+
+  /**
+   * Vincula una factura con un proveedor
+   */
+  private async linkInvoiceToSupplier(documentId: string, supplierId: string, invoiceData?: any): Promise<void> {
+    try {
+      console.log(`🔗 [SuppliersManager] Vinculando factura ${documentId} con proveedor ${supplierId}`);
+      
+      const pgClient = await import('@/lib/postgresql-client');
+      
+      // Extraer datos de la factura si están disponibles
+      const invoiceNumber = invoiceData?.invoice_number || null;
+      const invoiceDate = invoiceData?.issue_date || invoiceData?.invoice_date || null;
+      const totalAmount = invoiceData?.total_amount || invoiceData?.totals?.total || null;
+      const taxAmount = invoiceData?.tax_amount || invoiceData?.totals?.total_tax_amount || null;
+      
+      // Insertar en invoice_entities
+      const { error } = await pgClient.query(
+        `INSERT INTO invoice_entities (
+          document_id, supplier_id, invoice_number, invoice_date, 
+          total_amount, tax_amount, status, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        ON CONFLICT (document_id, supplier_id, customer_id, invoice_number) 
+        DO UPDATE SET 
+          total_amount = EXCLUDED.total_amount,
+          tax_amount = EXCLUDED.tax_amount,
+          updated_at = NOW()`,
+        [documentId, supplierId, invoiceNumber, invoiceDate, totalAmount, taxAmount, 'active']
+      );
+      
+      if (error) {
+        console.error('❌ [SuppliersManager] Error vinculando factura:', error);
+      } else {
+        console.log('✅ [SuppliersManager] Factura vinculada exitosamente');
+      }
+    } catch (error) {
+      console.error('❌ [SuppliersManager] Error en linkInvoiceToSupplier:', error);
+    }
+  }
+
+  /**
+   * Vincula una factura con un cliente
+   */
+  private async linkInvoiceToCustomer(documentId: string, customerId: string, invoiceData?: any): Promise<void> {
+    try {
+      console.log(`🔗 [SuppliersManager] Vinculando factura ${documentId} con cliente ${customerId}`);
+      
+      const pgClient = await import('@/lib/postgresql-client');
+      
+      // Similar a linkInvoiceToSupplier
+      const invoiceNumber = invoiceData?.invoice_number || null;
+      const invoiceDate = invoiceData?.issue_date || invoiceData?.invoice_date || null;
+      const totalAmount = invoiceData?.total_amount || invoiceData?.totals?.total || null;
+      const taxAmount = invoiceData?.tax_amount || invoiceData?.totals?.total_tax_amount || null;
+      
+      const { error } = await pgClient.query(
+        `INSERT INTO invoice_entities (
+          document_id, customer_id, invoice_number, invoice_date, 
+          total_amount, tax_amount, status, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        ON CONFLICT (document_id, supplier_id, customer_id, invoice_number) 
+        DO UPDATE SET 
+          customer_id = EXCLUDED.customer_id,
+          total_amount = EXCLUDED.total_amount,
+          tax_amount = EXCLUDED.tax_amount,
+          updated_at = NOW()`,
+        [documentId, customerId, invoiceNumber, invoiceDate, totalAmount, taxAmount, 'active']
+      );
+      
+      if (error) {
+        console.error('❌ [SuppliersManager] Error vinculando factura con cliente:', error);
+      } else {
+        console.log('✅ [SuppliersManager] Factura vinculada con cliente exitosamente');
+      }
+    } catch (error) {
+      console.error('❌ [SuppliersManager] Error en linkInvoiceToCustomer:', error);
     }
   }
 

@@ -47,7 +47,7 @@ function convertToISODate(dateString: string | null | undefined): string | null 
 }
 
 // Configurar el límite de tamaño para archivos grandes
-export const maxDuration = 180; // 3 minutos para procesamiento completo
+export const maxDuration = 300; // 5 minutos para procesamiento completo con Mistral
 export const dynamic = 'force-dynamic';
 
 // Función para guardar archivo localmente

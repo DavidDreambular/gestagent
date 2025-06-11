@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   Users2, 
   Search, 
@@ -26,9 +27,11 @@ import {
   TrendingUp,
   Activity,
   AlertCircle,
-  Building
+  Building,
+  Receipt
 } from 'lucide-react';
 import Link from 'next/link';
+import { InvoiceHistory } from '@/components/entities/InvoiceHistory';
 
 interface Customer {
   customer_id: string;
@@ -75,6 +78,8 @@ export default function CustomersPage() {
   const [sortOrder, setSortOrder] = useState('desc');
   const [totalActive, setTotalActive] = useState(0);
   const [availableTypes, setAvailableTypes] = useState<string[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [showInvoiceHistory, setShowInvoiceHistory] = useState(false);
 
   const fetchCustomers = async () => {
     try {
@@ -418,6 +423,19 @@ export default function CustomersPage() {
                       <Button
                         variant="outline"
                         size="sm"
+                        onClick={() => {
+                          setSelectedCustomer(customer);
+                          setShowInvoiceHistory(true);
+                        }}
+                        className="flex items-center gap-1"
+                      >
+                        <Receipt className="h-3 w-3" />
+                        Facturas
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
                         className="flex items-center gap-1"
                       >
                         <Download className="h-3 w-3" />
@@ -519,6 +537,24 @@ export default function CustomersPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Modal de historial de facturas */}
+      <Dialog open={showInvoiceHistory} onOpenChange={setShowInvoiceHistory}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Historial de Facturas - {selectedCustomer?.name}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedCustomer && (
+            <InvoiceHistory
+              entityType="customer"
+              entityId={selectedCustomer.customer_id}
+              entityName={selectedCustomer.name}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 
