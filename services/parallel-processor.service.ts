@@ -8,6 +8,7 @@ import pgClient from '@/lib/postgresql-client';
 import { v4 as uuidv4 } from 'uuid';
 import { suppliersCustomersManager } from './suppliers-customers-manager';
 import { duplicateDetectionService } from './duplicate-detection.service';
+import { enhancedTemplatesService } from './enhanced-extraction-templates.service';
 import AuditService, { AuditAction, AuditEntityType } from './audit.service';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
@@ -189,17 +190,54 @@ export class ParallelProcessorService {
         throw new Error(extractedData?.error || 'Error en procesamiento Mistral');
       }
 
+      // 2.5. Aplicar plantillas de extracción si están disponibles
+      job.progress = 40;
+      let enhancedData = extractedData;
+      let templateApplied = null;
+      
+      // Intentar aplicar plantillas si tenemos información del proveedor
+      if (extractedData && extractedData.supplier?.name) {
+        try {
+          const template = await enhancedTemplatesService.findTemplateBySupplier(
+            extractedData.supplier.name,
+            extractedData.supplier.nif
+          );
+          
+          if (template) {
+            console.log(`📋 [ParallelProcessor] Aplicando plantilla: ${template.name}`);
+            const templateResult = await enhancedTemplatesService.applyTemplate(template, extractedData);
+            enhancedData = templateResult.enhanced_data;
+            templateApplied = {
+              template_id: template.template_id,
+              template_name: template.name,
+              confidence_boost: templateResult.confidence_boost,
+              patterns_matched: templateResult.patterns_matched
+            };
+            
+            // Aprender del documento para mejorar la plantilla
+            await enhancedTemplatesService.learnFromDocument(
+              extractedData.supplier.name,
+              extractedData.supplier.nif,
+              extractedData,
+              1.0 // Asumir éxito para el aprendizaje
+            );
+          }
+        } catch (templateError) {
+          console.warn(`⚠️ [ParallelProcessor] Error aplicando plantilla: ${templateError}`);
+        }
+      }
+
       // 3. Detectar duplicados si está habilitado
       job.progress = 50;
       let duplicateInfo = null;
       
-      if (options.detectDuplicates && extractedData.supplierInfo) {
+      if (options.detectDuplicates && enhancedData.supplierInfo) {
         const duplicateResult = await duplicateDetectionService.findDuplicateSupplier({
-          name: extractedData.supplierInfo.name,
-          nif_cif: extractedData.supplierInfo.nif,
-          address: extractedData.supplierInfo.address,
-          phone: extractedData.supplierInfo.phone,
-          email: extractedData.supplierInfo.email
+          name: enhancedData.supplierInfo.name,
+          nif_cif: enhancedData.supplierInfo.nif,
+          address: enhancedData.supplierInfo.address,
+          phone: enhancedData.supplierInfo.phone,
+          email: enhancedData.supplierInfo.email
         });
         
         if (duplicateResult.has_duplicates) {
@@ -216,9 +254,9 @@ export class ParallelProcessorService {
       let supplierData = null;
       let customerData = null;
       
-      if (!options.skipSupplierCreation && extractedData.supplierInfo) {
+      if (!options.skipSupplierCreation && enhancedData.supplierInfo) {
         const supplierResult = await suppliersCustomersManager.processSupplier(
-          extractedData.supplierInfo,
+          enhancedData.supplierInfo,
           { skipDuplicateCheck: duplicateInfo?.recommendedAction === 'merge' }
         );
         
@@ -227,9 +265,9 @@ export class ParallelProcessorService {
         }
       }
       
-      if (extractedData.customerInfo) {
+      if (enhancedData.customerInfo) {
         const customerResult = await suppliersCustomersManager.processCustomer(
-          extractedData.customerInfo
+          enhancedData.customerInfo
         );
         
         if (customerResult.success) {
@@ -240,7 +278,7 @@ export class ParallelProcessorService {
       // 5. Guardar documento en PostgreSQL
       job.progress = 85;
       const documentId = uuidv4();
-      const documentDate = this.convertToISODate(extractedData.date);
+      const documentDate = this.convertToISODate(enhancedData.date);
       
       const { error: insertError } = await pgClient.query(
         `INSERT INTO documents (
@@ -256,25 +294,29 @@ export class ParallelProcessorService {
           documentId,
           job.fileName,
           filePath,
-          extractedData.type || 'factura',
-          extractedData.subtipo || null,
+          enhancedData.type || 'factura',
+          enhancedData.subtipo || null,
           'processed',
           new Date().toISOString(),
           new Date().toISOString(),
           documentDate,
           documentDate ? new Date(documentDate).getFullYear() : null,
           documentDate ? new Date(documentDate).getMonth() + 1 : null,
-          JSON.stringify(extractedData),
-          extractedData.totalAmount || 0,
-          extractedData.taxAmount || 0,
+          JSON.stringify({
+            ...enhancedData,
+            template_applied: templateApplied,
+            duplicate_info: duplicateInfo
+          }),
+          enhancedData.totalAmount || 0,
+          enhancedData.taxAmount || 0,
           supplierData?.supplier_id || null,
           'supplier',
-          extractedData.supplierInfo?.name || null,
-          extractedData.supplierInfo?.nif || null,
+          enhancedData.supplierInfo?.name || null,
+          enhancedData.supplierInfo?.nif || null,
           customerData?.customer_id || null,
           'customer',
-          extractedData.customerInfo?.name || null,
-          extractedData.customerInfo?.nif || null,
+          enhancedData.customerInfo?.name || null,
+          enhancedData.customerInfo?.nif || null,
           options.userId || null
         ]
       );
@@ -284,8 +326,8 @@ export class ParallelProcessorService {
       }
 
       // 6. Vincular factura si está habilitado
-      if (options.autoLinkInvoices && extractedData.type === 'factura') {
-        await this.linkInvoice(documentId, supplierData?.supplier_id, customerData?.customer_id, extractedData);
+      if (options.autoLinkInvoices && enhancedData.type === 'factura') {
+        await this.linkInvoice(documentId, supplierData?.supplier_id, customerData?.customer_id, enhancedData);
       }
 
       // 7. Registrar en auditoría
@@ -297,9 +339,10 @@ export class ParallelProcessorService {
           entityId: documentId,
           newValues: {
             fileName: job.fileName,
-            documentType: extractedData.type,
+            documentType: enhancedData.type,
             status: 'processed',
-            batchProcessing: true
+            batchProcessing: true,
+            templateApplied: templateApplied?.template_name
           },
           ipAddress: options.requestIp,
           userAgent: 'ParallelProcessorService'
@@ -310,10 +353,12 @@ export class ParallelProcessorService {
       job.status = 'completed';
       job.result = {
         documentId,
-        extractedData,
+        extractedData: enhancedData,
+        originalData: extractedData,
         supplierData,
         customerData,
-        duplicateInfo
+        duplicateInfo,
+        templateApplied
       };
       
       console.log(`✅ [ParallelProcessor] Completado: ${job.fileName}`);

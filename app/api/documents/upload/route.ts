@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { suppliersCustomersManager } from '@/services/suppliers-customers-manager';
+import { enhancedTemplatesService } from '@/services/enhanced-extraction-templates.service';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import AuditService, { AuditAction, AuditEntityType } from '@/services/audit.service';
@@ -191,6 +192,47 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ [API] Procesamiento exitoso en ${result.processing_metadata.total_time_ms}ms`);
 
+    // NUEVO: Aplicar plantillas de extracción si están disponibles
+    let enhancedData = result.extracted_data;
+    let templateApplied = null;
+    
+    // Intentar aplicar plantillas si tenemos información del proveedor
+    if (result.extracted_data && result.extracted_data.supplier?.name) {
+      try {
+        console.log('📋 [API] Buscando plantillas de extracción...');
+        const template = await enhancedTemplatesService.findTemplateBySupplier(
+          result.extracted_data.supplier.name,
+          result.extracted_data.supplier.nif
+        );
+        
+        if (template) {
+          console.log(`📋 [API] Aplicando plantilla: ${template.name}`);
+          const templateResult = await enhancedTemplatesService.applyTemplate(template, result.extracted_data);
+          enhancedData = templateResult.enhanced_data;
+          templateApplied = {
+            template_id: template.template_id,
+            template_name: template.name,
+            confidence_boost: templateResult.confidence_boost,
+            patterns_matched: templateResult.patterns_matched
+          };
+          
+          // Aprender del documento para mejorar la plantilla
+          await enhancedTemplatesService.learnFromDocument(
+            result.extracted_data.supplier.name,
+            result.extracted_data.supplier.nif,
+            result.extracted_data,
+            1.0 // Asumir éxito para el aprendizaje
+          );
+          
+          console.log(`✅ [API] Plantilla aplicada. Boost: +${(templateResult.confidence_boost * 100).toFixed(1)}%`);
+        } else {
+          console.log('ℹ️ [API] No se encontró plantilla específica para este proveedor');
+        }
+      } catch (templateError) {
+        console.warn(`⚠️ [API] Error aplicando plantilla: ${templateError}`);
+      }
+    }
+
     // AUDITORÍA: Registrar inicio de procesamiento
     await AuditService.logFromRequest(request, {
       userId,
@@ -216,7 +258,7 @@ export async function POST(request: NextRequest) {
     try {
       console.log('🏢 [API] Procesando relaciones comerciales...');
       const relations = await suppliersCustomersManager.processInvoiceRelations(
-        result.extracted_data,
+        enhancedData,
         jobId
       );
       supplier_id = relations.supplier_id;
@@ -236,19 +278,19 @@ export async function POST(request: NextRequest) {
 
     try {
       // Si es un array de facturas, sumar totales
-      if (Array.isArray(result.extracted_data)) {
-        total_amount = result.extracted_data.reduce((sum: number, invoice: any) => {
+      if (Array.isArray(enhancedData)) {
+        total_amount = enhancedData.reduce((sum: number, invoice: any) => {
           return sum + (invoice.totals?.total || 0);
         }, 0);
-        tax_amount = result.extracted_data.reduce((sum: number, invoice: any) => {
+        tax_amount = enhancedData.reduce((sum: number, invoice: any) => {
           return sum + (invoice.totals?.total_tax_amount || 0);
         }, 0);
-        document_date = convertToISODate(result.extracted_data[0]?.issue_date || result.extracted_data[0]?.invoice_date) || undefined;
+        document_date = convertToISODate(enhancedData[0]?.issue_date || enhancedData[0]?.invoice_date) || undefined;
       } else {
         // Si es una factura única
-        total_amount = result.extracted_data?.totals?.total || 0;
-        tax_amount = result.extracted_data?.totals?.total_tax_amount || 0;
-        document_date = convertToISODate(result.extracted_data?.issue_date) || undefined;
+        total_amount = enhancedData?.totals?.total || 0;
+        tax_amount = enhancedData?.totals?.total_tax_amount || 0;
+        document_date = convertToISODate(enhancedData?.issue_date) || undefined;
       }
     } catch (totalsError) {
       console.warn('⚠️ [API] Error extrayendo totales:', totalsError);
@@ -284,19 +326,23 @@ export async function POST(request: NextRequest) {
          job_id: result.jobId,
          document_type: documentType,
          raw_json: {}, // No aplicable para Document Understanding
-         processed_json: result.extracted_data,
+         processed_json: {
+           ...enhancedData,
+           template_applied: templateApplied,
+           original_data: result.extracted_data
+         },
          upload_timestamp: new Date().toISOString(),
          user_id: userId,
          status: 'completed',
          version: 6,
          
          // Campos denormalizados
-         emitter_name: Array.isArray(result.extracted_data) 
-           ? result.extracted_data[0]?.supplier?.name || undefined
-           : result.extracted_data?.supplier?.name || undefined,
-         receiver_name: Array.isArray(result.extracted_data)
-           ? result.extracted_data[0]?.customer?.name || undefined  
-           : result.extracted_data?.customer?.name || undefined,
+         emitter_name: Array.isArray(enhancedData) 
+           ? enhancedData[0]?.supplier?.name || undefined
+           : enhancedData?.supplier?.name || undefined,
+         receiver_name: Array.isArray(enhancedData)
+           ? enhancedData[0]?.customer?.name || undefined  
+           : enhancedData?.customer?.name || undefined,
          document_date: document_date || undefined,
          
          title: `${documentType}_${result.jobId}`,
@@ -324,14 +370,15 @@ export async function POST(request: NextRequest) {
             document_type: documentType,
             title: `${documentType}_${result.jobId}`,
             file_path: filePath,
-            emitter_name: Array.isArray(result.extracted_data) 
-              ? result.extracted_data[0]?.supplier?.name || undefined
-              : result.extracted_data?.supplier?.name || undefined,
-            receiver_name: Array.isArray(result.extracted_data)
-              ? result.extracted_data[0]?.customer?.name || undefined  
-              : result.extracted_data?.customer?.name || undefined,
+            emitter_name: Array.isArray(enhancedData) 
+              ? enhancedData[0]?.supplier?.name || undefined
+              : enhancedData?.supplier?.name || undefined,
+            receiver_name: Array.isArray(enhancedData)
+              ? enhancedData[0]?.customer?.name || undefined  
+              : enhancedData?.customer?.name || undefined,
             total_amount,
-            tax_amount
+            tax_amount,
+            template_applied: templateApplied?.template_name
           },
           {
             req: request,
@@ -353,13 +400,16 @@ export async function POST(request: NextRequest) {
       success: true,
       jobId: result.jobId,
       document_url: filePath,
-      extracted_data: result.extracted_data,
+      extracted_data: enhancedData,
+      original_data: result.extracted_data,
       processing_metadata: {
         ...result.processing_metadata,
         api_version: '6.0.0',
         timestamp: new Date().toISOString(),
         user_id: userId,
         storage_method: 'postgresql_local',
+        // Información de plantillas aplicadas
+        template_info: templateApplied,
         // Información de relaciones comerciales
         relations: {
           supplier_id,
