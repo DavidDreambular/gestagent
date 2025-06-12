@@ -8,6 +8,7 @@ import { SuppliersCustomersManager } from '@/services/suppliers-customers-manage
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import AuditService, { AuditAction, AuditEntityType } from '@/services/audit.service';
+import { unifiedNotificationService } from '@/lib/services/unified-notification.service';
 
 // Configuración para procesamiento masivo optimizado
 export const maxDuration = 300; // 5 minutos para múltiples archivos
@@ -161,6 +162,9 @@ async function processDocumentWithMistral(
     // Guardar archivo localmente
     const filePath = saveFileLocally(pdfBuffer, job.file.name, job.id);
 
+    // Notificar que el documento ha sido recibido
+    await unifiedNotificationService.notifyDocumentUploaded(job.userId, job.file.name, job.id);
+
     // Procesar con Enhanced Mistral Processor
     const enhancedProcessor = new EnhancedMistralProcessor();
     const mistralResult = await enhancedProcessor.processDocument(pdfBuffer, job.id);
@@ -181,7 +185,11 @@ async function processDocumentWithMistral(
     // Extraer datos clave del resultado de Mistral
     const extractedData = mistralResult.extracted_data;
     
-    // Procesar información de proveedor y cliente
+    // NUEVA LÓGICA: Procesar TODAS las facturas detectadas, no solo la primera
+    const allInvoices = extractedData?.detected_invoices || [];
+    console.log(`🔍 [UPLOAD-MULTIPLE] Procesando ${allInvoices.length} facturas detectadas en ${job.file.name}`);
+    
+    // Procesar información usando TODAS las facturas
     let emitterName = 'Desconocido';
     let emitterNif = null;
     let receiverName = 'Desconocido';
@@ -192,48 +200,55 @@ async function processDocumentWithMistral(
     let documentDate = null;
     let dueDate = null;
     let invoiceNumber = null;
-
-    if (extractedData?.detected_invoices && extractedData.detected_invoices.length > 0) {
-      const invoice = extractedData.detected_invoices[0];
+    
+    // Para compatibilidad con la BD, usar datos de la primera factura como representativos del documento
+    if (allInvoices.length > 0) {
+      const firstInvoice = allInvoices[0];
       
-      emitterName = invoice.supplier?.name || invoice.emitter?.name || 'Desconocido';
-      emitterNif = invoice.supplier?.nif || invoice.emitter?.nif;
-      receiverName = invoice.customer?.name || invoice.receiver?.name || 'Desconocido';
-      receiverNif = invoice.customer?.nif || invoice.receiver?.nif;
+      emitterName = firstInvoice.supplier?.name || firstInvoice.emitter?.name || 'Desconocido';
+      emitterNif = firstInvoice.supplier?.nif || firstInvoice.emitter?.nif;
+      receiverName = firstInvoice.customer?.name || firstInvoice.receiver?.name || 'Desconocido';
+      receiverNif = firstInvoice.customer?.nif || firstInvoice.receiver?.nif;
       
-      totalAmount = invoice.total_amount || invoice.amount?.total;
-      taxAmount = invoice.tax_amount || invoice.amount?.tax;
-      baseAmount = invoice.base_amount || invoice.amount?.base;
+      totalAmount = firstInvoice.total_amount || firstInvoice.amount?.total;
+      taxAmount = firstInvoice.tax_amount || firstInvoice.amount?.tax;
+      baseAmount = firstInvoice.base_amount || firstInvoice.amount?.base;
       
-      documentDate = convertToISODate(invoice.issue_date || invoice.date);
-      dueDate = convertToISODate(invoice.due_date);
-      invoiceNumber = invoice.invoice_number || invoice.number;
+      documentDate = convertToISODate(firstInvoice.issue_date || firstInvoice.date);
+      dueDate = convertToISODate(firstInvoice.due_date);
+      invoiceNumber = firstInvoice.invoice_number || firstInvoice.number;
+      
+      // Si hay múltiples facturas, agregar indicador en el número
+      if (allInvoices.length > 1) {
+        invoiceNumber = `${invoiceNumber || 'SIN_NUMERO'} (+${allInvoices.length - 1} más)`;
+      }
     }
 
-    // Gestionar proveedor/cliente automáticamente usando processInvoiceRelations
+    // CRÍTICO: Gestionar TODAS las facturas automáticamente usando processInvoiceRelations
     let supplierId = null;
     let customerId = null;
+    let relationResults: string[] = [];
 
     try {
-      const invoiceRelations = {
-        invoice_number: invoiceNumber || 'SIN_NUMERO',
-        issue_date: documentDate || undefined,
-        total_amount: totalAmount,
-        supplier: emitterName && emitterName !== 'Desconocido' ? {
-          name: emitterName,
-          nif_cif: emitterNif
-        } : undefined,
-        customer: receiverName && receiverName !== 'Desconocido' ? {
-          name: receiverName,
-          nif_cif: receiverNif
-        } : undefined
-      };
-
-      const relations = await suppliersCustomersManager.processInvoiceRelations(invoiceRelations, job.id);
+      console.log(`🏢 [UPLOAD-MULTIPLE] Procesando relaciones para ${allInvoices.length} facturas`);
+      
+      // Pasar TODAS las facturas al manager para que procese cada una
+      const relations = await suppliersCustomersManager.processInvoiceRelations(allInvoices, job.id);
+      
       supplierId = relations.supplier_id || null;
       customerId = relations.customer_id || null;
+      relationResults = relations.operations || [];
+      
+      console.log(`✅ [UPLOAD-MULTIPLE] Relaciones procesadas:`, {
+        supplier_id: supplierId,
+        customer_id: customerId,
+        operations_count: relationResults.length,
+        operations: relationResults
+      });
+      
     } catch (relationError: any) {
-      console.warn(`⚠️ [UPLOAD-MULTIPLE] Error procesando relaciones para ${job.file.name}:`, relationError);
+      console.error(`❌ [UPLOAD-MULTIPLE] Error procesando relaciones para ${job.file.name}:`, relationError);
+      relationResults.push(`Error: ${relationError.message}`);
     }
 
     // Guardar en la base de datos con columnas existentes solamente
@@ -251,12 +266,16 @@ async function processDocumentWithMistral(
       processing_time_ms: mistralResult.processing_metadata?.total_time_ms || 0,
       confidence: mistralResult.processing_metadata?.confidence || 0,
       total_invoices_detected: mistralResult.total_invoices_detected,
+      invoices_processed: allInvoices.length,
       is_duplicate: isDuplicate,
       emitter_name: emitterName,
       invoice_number: invoiceNumber,
       supplier_id: supplierId,
       customer_id: customerId,
-      method: mistralResult.processing_metadata?.method || 'mistral-enhanced'
+      method: mistralResult.processing_metadata?.method || 'mistral-enhanced',
+      multiple_invoices: allInvoices.length > 1,
+      relation_operations: relationResults,
+      all_invoice_numbers: allInvoices.map(inv => inv.invoice_number || 'SIN_NUMERO').join(', ')
     };
 
     const values = [
@@ -296,9 +315,20 @@ async function processDocumentWithMistral(
       metadata: {
         batchUpload: true,
         source: 'upload_multiple_enhanced',
-        mistralVersion: 'enhanced'
+        mistralVersion: 'enhanced',
+        multipleInvoices: allInvoices.length > 1,
+        allInvoiceNumbers: allInvoices.map(inv => inv.invoice_number || 'SIN_NUMERO').slice(0, 5).join(', '),
+        relationOperations: relationResults.length
       }
     });
+
+    // Notificar que el documento ha sido procesado exitosamente
+    await unifiedNotificationService.notifyDocumentProcessed(
+      job.userId, 
+      job.file.name, 
+      job.id, 
+      mistralResult.total_invoices_detected || 0
+    );
 
     job.endTime = Date.now();
     job.status = 'completed';
@@ -309,15 +339,29 @@ async function processDocumentWithMistral(
       documentType: job.documentType,
       processingTime: job.endTime - startTime,
       totalInvoices: mistralResult.total_invoices_detected,
+      invoicesProcessed: allInvoices.length,
+      multipleInvoices: allInvoices.length > 1,
       emitterName,
       receiverName,
       totalAmount,
       invoiceNumber,
       isDuplicate,
-      mistralConfidence: mistralResult.processing_metadata?.confidence || 0
+      mistralConfidence: mistralResult.processing_metadata?.confidence || 0,
+      supplierId,
+      customerId,
+      relationOperations: relationResults.length,
+      allInvoiceNumbers: allInvoices.map(inv => inv.invoice_number || 'SIN_NUMERO').slice(0, 3)
     };
 
     console.log(`✅ [UPLOAD-MULTIPLE] Completado: ${job.file.name} en ${job.endTime - startTime}ms`);
+    console.log(`📊 [UPLOAD-MULTIPLE] Resumen del procesamiento:`);
+    console.log(`   📄 Facturas detectadas: ${mistralResult.total_invoices_detected}`);
+    console.log(`   🏢 Facturas procesadas: ${allInvoices.length}`);
+    console.log(`   🆔 Proveedores/Clientes: ${supplierId ? 'S' : '-'}${customerId ? 'C' : '-'}`);
+    console.log(`   🔗 Operaciones de relación: ${relationResults.length}`);
+    if (allInvoices.length > 1) {
+      console.log(`   📋 Números de factura: ${allInvoices.map(inv => inv.invoice_number || 'SIN_NUMERO').slice(0, 3).join(', ')}${allInvoices.length > 3 ? '...' : ''}`);
+    }
     return job;
 
   } catch (error: any) {
@@ -326,6 +370,15 @@ async function processDocumentWithMistral(
     job.endTime = Date.now();
     
     console.error(`❌ [UPLOAD-MULTIPLE] Error procesando ${job.file.name}:`, error);
+    
+    // Notificar error si se han agotado los intentos
+    if (job.attempts >= RETRY_ATTEMPTS) {
+      await unifiedNotificationService.notifyDocumentError(
+        job.userId, 
+        job.file.name, 
+        error?.message || 'Error desconocido'
+      );
+    }
     
     // Reintentar si no se han agotado los intentos
     if (job.attempts < RETRY_ATTEMPTS) {
@@ -470,20 +523,30 @@ export async function POST(request: NextRequest) {
         ? completed.reduce((sum, job) => sum + (job.endTime! - job.startTime!), 0) / completed.length
         : 0,
       duplicatesDetected: completed.filter(job => job.result?.isDuplicate).length,
-      totalInvoicesDetected: completed.reduce((sum, job) => sum + (job.result?.totalInvoices || 0), 0)
+      totalInvoicesDetected: completed.reduce((sum, job) => sum + (job.result?.totalInvoices || 0), 0),
+      totalInvoicesProcessed: completed.reduce((sum, job) => sum + (job.result?.invoicesProcessed || 0), 0),
+      documentsWithMultipleInvoices: completed.filter(job => job.result?.multipleInvoices).length,
+      totalSupplierCustomerOperations: completed.reduce((sum, job) => sum + (job.result?.relationOperations || 0), 0),
+      averageInvoicesPerDocument: completed.length > 0 
+        ? completed.reduce((sum, job) => sum + (job.result?.invoicesProcessed || 0), 0) / completed.length
+        : 0
     };
 
     console.log(`✅ [UPLOAD-MULTIPLE] Procesamiento completado:`);
-    console.log(`   • Archivos: ${stats.totalFiles}`);
-    console.log(`   • Exitosos: ${stats.completed}`);
-    console.log(`   • Fallidos: ${stats.failed}`);
-    console.log(`   • Tiempo total: ${stats.totalProcessingTime}ms`);
-    console.log(`   • Facturas detectadas: ${stats.totalInvoicesDetected}`);
-    console.log(`   • Duplicados: ${stats.duplicatesDetected}`);
+    console.log(`   📁 Archivos: ${stats.totalFiles}`);
+    console.log(`   ✅ Exitosos: ${stats.completed}`);
+    console.log(`   ❌ Fallidos: ${stats.failed}`);
+    console.log(`   ⏱️ Tiempo total: ${stats.totalProcessingTime}ms`);
+    console.log(`   📄 Facturas detectadas: ${stats.totalInvoicesDetected}`);
+    console.log(`   🏢 Facturas procesadas: ${stats.totalInvoicesProcessed}`);
+    console.log(`   📊 Promedio facturas/documento: ${stats.averageInvoicesPerDocument.toFixed(1)}`);
+    console.log(`   📋 Documentos con múltiples facturas: ${stats.documentsWithMultipleInvoices}`);
+    console.log(`   🔗 Operaciones de proveedor/cliente: ${stats.totalSupplierCustomerOperations}`);
+    console.log(`   🔄 Duplicados: ${stats.duplicatesDetected}`);
 
     return NextResponse.json({
       success: true,
-      message: `Procesamiento completado: ${stats.completed}/${stats.totalFiles} archivos exitosos`,
+      message: `Procesamiento completado: ${stats.completed}/${stats.totalFiles} archivos exitosos, ${stats.totalInvoicesProcessed} facturas procesadas`,
       stats,
       results: processedJobs.map(job => ({
         jobId: job.id,
