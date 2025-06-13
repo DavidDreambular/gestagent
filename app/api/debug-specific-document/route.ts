@@ -58,7 +58,7 @@ export async function GET() {
     try {
       if (processedJson?.detected_invoices) {
         relationProcessingResult = await suppliersCustomersManager.processInvoiceRelations(
-          { detected_invoices: processedJson.detected_invoices },
+          processedJson as any,
           specificJobId
         );
       }

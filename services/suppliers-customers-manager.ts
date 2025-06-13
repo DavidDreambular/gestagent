@@ -5,6 +5,7 @@
 console.log('🏢 [SuppliersManager] Inicializando con PostgreSQL/SQLite compatible');
 
 import { duplicateDetectionService } from './duplicate-detection.service';
+import { unifiedNotificationService } from '@/lib/services/unified-notification.service';
 
 interface SupplierData {
   name: string;
@@ -71,6 +72,9 @@ export class SuppliersCustomersManager {
           const invoice = invoiceData[i];
           console.log(`📋 [SuppliersManager] Procesando factura ${i + 1}/${invoiceData.length}: ${invoice.invoice_number || 'Sin número'}`);
 
+          let currentSupplierId: string | undefined;
+          let currentCustomerId: string | undefined;
+
           // Procesar proveedor si existe
           if (invoice.supplier && invoice.supplier.name) {
             // Crear clave única más robusta
@@ -82,12 +86,16 @@ export class SuppliersCustomersManager {
               if (newSupplierId) {
                 suppliersProcessed.set(supplierKey, newSupplierId);
                 supplier_id = supplier_id || newSupplierId; // Primer proveedor como referencia principal
+                currentSupplierId = newSupplierId;
                 operations.push(`✅ Proveedor ${i + 1} procesado: ${invoice.supplier.name} (${invoice.supplier.nif_cif || 'Sin NIF'})`);
               } else {
                 operations.push(`❌ Error procesando proveedor ${i + 1}: ${invoice.supplier.name}`);
               }
             } else {
               const existingSupplierId = suppliersProcessed.get(supplierKey);
+              currentSupplierId = existingSupplierId;
+              // Vincular esta factura específica con el proveedor existente
+              await this.linkInvoiceToSupplier(documentJobId, existingSupplierId, invoice);
               operations.push(`♻️ Proveedor ${i + 1} ya procesado: ${invoice.supplier.name} (ID: ${existingSupplierId})`);
             }
           } else {
@@ -105,16 +113,26 @@ export class SuppliersCustomersManager {
               if (newCustomerId) {
                 customersProcessed.set(customerKey, newCustomerId);
                 customer_id = customer_id || newCustomerId; // Primer cliente como referencia principal
+                currentCustomerId = newCustomerId;
                 operations.push(`✅ Cliente ${i + 1} procesado: ${invoice.customer.name} (${invoice.customer.nif_cif || 'Sin NIF'})`);
               } else {
                 operations.push(`❌ Error procesando cliente ${i + 1}: ${invoice.customer.name}`);
               }
             } else {
               const existingCustomerId = customersProcessed.get(customerKey);
+              currentCustomerId = existingCustomerId;
+              // Vincular esta factura específica con el cliente existente
+              await this.linkInvoiceToCustomer(documentJobId, existingCustomerId, invoice);
               operations.push(`♻️ Cliente ${i + 1} ya procesado: ${invoice.customer.name} (ID: ${existingCustomerId})`);
             }
           } else {
             operations.push(`⚠️ Factura ${i + 1} sin datos de cliente válidos`);
+          }
+
+          // Crear registro en invoice_entities para esta factura específica
+          if (currentSupplierId || currentCustomerId) {
+            await this.createInvoiceEntity(documentJobId, currentSupplierId, currentCustomerId, invoice);
+            console.log(`🔗 [SuppliersManager] Entidad de factura creada: ${invoice.invoice_number}`);
           }
         }
 
@@ -175,27 +193,18 @@ export class SuppliersCustomersManager {
       console.log(`🔍 [SuppliersManager] Buscando proveedor con PostgreSQL: ${supplierData.name}`);
       
       // NUEVO: Verificar duplicados antes de procesar
-      const duplicateCheck = await duplicateDetectionService.findDuplicateSupplier({
-        name: supplierData.name,
-        nif_cif: supplierData.nif_cif,
-        address: supplierData.address,
-        phone: supplierData.phone,
-        email: supplierData.email
-      });
+      const duplicateCheck = await duplicateDetectionService.findDuplicateSupplier(
+        supplierData.nif_cif,
+        supplierData.name
+      );
       
-      if (duplicateCheck.has_duplicates) {
-        console.log(`⚠️ [SuppliersManager] Duplicados detectados: ${duplicateCheck.candidates.length} candidatos`);
+      if (duplicateCheck) {
+        console.log(`✅ [SuppliersManager] Proveedor existente encontrado: ${duplicateCheck.name}`);
         
-        // Si hay alta confianza en un duplicado, usar ese ID
-        if (duplicateCheck.recommended_action === 'merge' && duplicateCheck.candidates.length > 0) {
-          const bestMatch = duplicateCheck.candidates[0];
-          console.log(`✅ [SuppliersManager] Usando proveedor existente: ${bestMatch.name} (${bestMatch.similarity_score * 100}% match)`);
-          
-          // Registrar en invoice_entities
-          await this.linkInvoiceToSupplier(documentJobId, bestMatch.entity_id);
-          
-          return bestMatch.entity_id;
-        }
+        // Registrar en invoice_entities
+        await this.linkInvoiceToSupplier(documentJobId, duplicateCheck.supplier_id);
+        
+        return duplicateCheck.supplier_id;
       }
 
       // Limpiar y truncar datos para evitar errores de BD
@@ -236,13 +245,34 @@ export class SuppliersCustomersManager {
         if (this.hasSignificantChanges(existingSupplier, updatedData)) {
           const supplierId = await this.updateSupplier(existingSupplier.id, updatedData);
           if (supplierId) {
-            await this.logAuditAction('supplier', supplierId, 'updated', documentJobId, 
-              this.getChanges(existingSupplier, updatedData));
+            const changes = this.getChanges(existingSupplier, updatedData);
+            await this.logAuditAction('supplier', supplierId, 'updated', documentJobId, changes);
             console.log(`Proveedor actualizado: ${cleanSupplierData.name}`);
+            
+            // Enviar notificación de proveedor actualizado
+            try {
+              const userId = await this.getUserIdFromDocument(documentJobId);
+              if (userId) {
+                const changesDescription = this.getChangesDescription(changes);
+                await unifiedNotificationService.notifyEntityUpdated(
+                  userId,
+                  'supplier',
+                  cleanSupplierData.name,
+                  supplierId,
+                  changesDescription
+                );
+              }
+            } catch (error) {
+              console.error('❌ Error enviando notificación de actualización:', error);
+            }
           }
+          // Vincular factura con proveedor existente actualizado
+          await this.linkInvoiceToSupplier(documentJobId, supplierId, supplierData);
           return supplierId;
         } else {
           console.log(`ℹ️ [SuppliersManager] Proveedor sin cambios significativos: ${cleanSupplierData.name}`);
+          // Vincular factura con proveedor existente
+          await this.linkInvoiceToSupplier(documentJobId, existingSupplier.id, supplierData);
           return existingSupplier.id;
         }
       }
@@ -263,6 +293,25 @@ export class SuppliersCustomersManager {
       if (supplierId) {
         await this.logAuditAction('supplier', supplierId, 'created', documentJobId, cleanSupplierData);
         console.log(`✅ [SuppliersManager] Proveedor creado exitosamente: ${cleanSupplierData.name} (ID: ${supplierId})`);
+        
+        // Enviar notificación de nuevo proveedor
+        try {
+          // Obtener el usuario del documento para enviar la notificación
+          const userId = await this.getUserIdFromDocument(documentJobId);
+          if (userId) {
+            await unifiedNotificationService.notifySupplierCreated(
+              userId, 
+              cleanSupplierData.name, 
+              supplierId,
+              `documento ${documentJobId}`
+            );
+          }
+        } catch (error) {
+          console.error('❌ Error enviando notificación de proveedor:', error);
+        }
+        
+        // Vincular factura con nuevo proveedor
+        await this.linkInvoiceToSupplier(documentJobId, supplierId, supplierData);
       }
 
       return supplierId;
@@ -307,11 +356,32 @@ export class SuppliersCustomersManager {
         if (this.hasSignificantChanges(existingCustomer, updatedData)) {
           const customerId = await this.updateCustomer(existingCustomer.id, updatedData);
           if (customerId) {
-            await this.logAuditAction('customer', customerId, 'updated', documentJobId, 
-              this.getChanges(existingCustomer, updatedData));
+            const changes = this.getChanges(existingCustomer, updatedData);
+            await this.logAuditAction('customer', customerId, 'updated', documentJobId, changes);
+            
+            // Enviar notificación de cliente actualizado
+            try {
+              const userId = await this.getUserIdFromDocument(documentJobId);
+              if (userId) {
+                const changesDescription = this.getChangesDescription(changes);
+                await unifiedNotificationService.notifyEntityUpdated(
+                  userId,
+                  'customer',
+                  cleanCustomerData.name,
+                  customerId,
+                  changesDescription
+                );
+              }
+            } catch (error) {
+              console.error('❌ Error enviando notificación de actualización:', error);
+            }
           }
+          // Vincular factura con cliente existente actualizado
+          await this.linkInvoiceToCustomer(documentJobId, customerId, customerData);
           return customerId;
         }
+        // Vincular factura con cliente existente
+        await this.linkInvoiceToCustomer(documentJobId, existingCustomer.id, customerData);
         return existingCustomer.id;
       }
 
@@ -329,6 +399,24 @@ export class SuppliersCustomersManager {
       if (customerId) {
         await this.logAuditAction('customer', customerId, 'created', documentJobId, cleanCustomerData);
         console.log(`✅ [SuppliersManager] Cliente creado exitosamente: ${cleanCustomerData.name} (ID: ${customerId})`);
+        
+        // Enviar notificación de nuevo cliente
+        try {
+          const userId = await this.getUserIdFromDocument(documentJobId);
+          if (userId) {
+            await unifiedNotificationService.notifyCustomerCreated(
+              userId,
+              cleanCustomerData.name,
+              customerId,
+              `documento ${documentJobId}`
+            );
+          }
+        } catch (error) {
+          console.error('❌ Error enviando notificación de cliente:', error);
+        }
+        
+        // Vincular factura con nuevo cliente
+        await this.linkInvoiceToCustomer(documentJobId, customerId, customerData);
       }
 
       return customerId;
@@ -687,32 +775,26 @@ export class SuppliersCustomersManager {
     details: any
   ): Promise<void> {
     try {
-      const pgClient = await import('@/lib/postgresql-client');
+      const { dbAdapter } = await import('@/lib/db-adapter');
       
       // Registrar en audit_logs
-      const { error } = await pgClient.query(
+      const result = await dbAdapter.query(
         `INSERT INTO audit_logs 
-         (user_id, action, entity_type, entity_id, old_values, new_values, metadata, ip_address, user_agent) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+         (entity_type, entity_id, action, document_id, old_values, new_values, notes) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
-          '00000000-0000-0000-0000-000000000000', // Usuario del sistema
-          action.toUpperCase(),
           entityType.toUpperCase() + 'S', // SUPPLIERS o CUSTOMERS
           entityId,
+          action.toUpperCase(),
+          documentId,
           action === 'updated' ? JSON.stringify(details.from || {}) : null,
           JSON.stringify(details.to || details),
-          JSON.stringify({ 
-            source: 'suppliers_manager',
-            document_id: documentId,
-            timestamp: new Date().toISOString()
-          }),
-          '127.0.0.1',
-          'suppliers-customers-manager/1.0'
+          `Auto-generated by suppliers-customers-manager`
         ]
       );
       
-      if (error) {
-        console.error('❌ [SuppliersManager] Error registrando audit log:', error);
+      if (result.error) {
+        console.error('❌ [SuppliersManager] Error registrando audit log:', result.error);
       } else {
         console.log(`📋 [PostgreSQL] Audit log: ${action} ${entityType} ${entityId}`);
       }
@@ -850,6 +932,50 @@ export class SuppliersCustomersManager {
   }
 
   /**
+   * Crea un registro en invoice_entities para vincular una factura específica
+   */
+  private async createInvoiceEntity(
+    documentId: string, 
+    supplierId?: string, 
+    customerId?: string, 
+    invoiceData?: any
+  ): Promise<void> {
+    try {
+      console.log(`🔗 [SuppliersManager] Creando entidad de factura para: ${invoiceData?.invoice_number || 'Sin número'}`);
+      
+      const pgClient = await import('@/lib/postgresql-client');
+      
+      // Extraer datos de la factura
+      const invoiceNumber = invoiceData?.invoice_number || null;
+      const invoiceDate = invoiceData?.issue_date || invoiceData?.invoice_date || null;
+      const totalAmount = invoiceData?.total_amount || invoiceData?.totals?.total || null;
+      const taxAmount = invoiceData?.tax_amount || invoiceData?.totals?.total_tax_amount || null;
+      
+      // Insertar en invoice_entities
+      const { error } = await pgClient.query(
+        `INSERT INTO invoice_entities (
+          document_id, supplier_id, customer_id, invoice_number, invoice_date, 
+          total_amount, tax_amount, status, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        ON CONFLICT (document_id, COALESCE(supplier_id, '00000000-0000-0000-0000-000000000000'), COALESCE(customer_id, '00000000-0000-0000-0000-000000000000'), COALESCE(invoice_number, '')) 
+        DO UPDATE SET 
+          total_amount = EXCLUDED.total_amount,
+          tax_amount = EXCLUDED.tax_amount,
+          updated_at = NOW()`,
+        [documentId, supplierId, customerId, invoiceNumber, invoiceDate, totalAmount, taxAmount, 'active']
+      );
+      
+      if (error) {
+        console.error('❌ [SuppliersManager] Error creando entidad de factura:', error);
+      } else {
+        console.log(`✅ [SuppliersManager] Entidad de factura creada: ${invoiceNumber || 'Sin número'}`);
+      }
+    } catch (error) {
+      console.error('❌ [SuppliersManager] Error en createInvoiceEntity:', error);
+    }
+  }
+
+  /**
    * Obtiene estadísticas de proveedores
    */
   async getSuppliersStats(): Promise<any> {
@@ -965,6 +1091,45 @@ export class SuppliersCustomersManager {
     } catch (error) {
       console.error('❌ [SuppliersManager] Error en linkInvoiceToCustomer:', error);
     }
+  }
+
+  /**
+   * Obtiene el ID del usuario desde un documento
+   */
+  private async getUserIdFromDocument(documentJobId: string): Promise<string | null> {
+    try {
+      const pgClient = await import('@/lib/postgresql-client');
+      const { data } = await pgClient.query(
+        'SELECT user_id FROM documents WHERE job_id = $1',
+        [documentJobId]
+      );
+      
+      return data?.[0]?.user_id || null;
+    } catch (error) {
+      console.error('❌ [SuppliersManager] Error obteniendo userId del documento:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Convierte los cambios en una descripción legible
+   */
+  private getChangesDescription(changes: any): string {
+    const descriptions: string[] = [];
+    
+    if (changes.name) descriptions.push(`nombre`);
+    if (changes.nif_cif) descriptions.push(`NIF/CIF`);
+    if (changes.address) descriptions.push(`dirección`);
+    if (changes.city) descriptions.push(`ciudad`);
+    if (changes.phone) descriptions.push(`teléfono`);
+    if (changes.email) descriptions.push(`email`);
+    
+    if (descriptions.length === 0) return 'información actualizada';
+    if (descriptions.length === 1) return descriptions[0] + ' actualizado';
+    if (descriptions.length === 2) return descriptions.join(' y ') + ' actualizados';
+    
+    const last = descriptions.pop();
+    return descriptions.join(', ') + ' y ' + last + ' actualizados';
   }
 
   /**

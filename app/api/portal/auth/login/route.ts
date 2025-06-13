@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { postgresqlClient } from '@/lib/postgresql-client'
-import bcrypt from 'bcryptjs'
+import pgClient from '@/lib/postgresql-client'
+import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
 
 export async function POST(request: NextRequest) {
@@ -17,12 +17,12 @@ export async function POST(request: NextRequest) {
     console.log('🔐 [Portal Auth] Intentando autenticar proveedor:', email)
 
     // Buscar usuario proveedor en la base de datos
-    const userResult = await postgresqlClient.query(
+    const { data: userData, error: userError } = await pgClient.query(
       'SELECT * FROM provider_users WHERE email = $1 AND active = true',
       [email]
     )
 
-    if (!userResult.data || userResult.data.length === 0) {
+    if (userError || !userData || userData.length === 0) {
       console.log('❌ [Portal Auth] Proveedor no encontrado:', email)
       return NextResponse.json(
         { error: 'Credenciales inválidas' },
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const user = userResult.data[0]
+    const user = userData[0]
 
     // Verificar contraseña
     const passwordMatch = await bcrypt.compare(password, user.password_hash)
@@ -43,26 +43,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Obtener información del proveedor
-    const providerResult = await postgresqlClient.query(
-      'SELECT * FROM suppliers WHERE id = $1',
-      [user.provider_id]
+    const { data: providerData, error: providerError } = await pgClient.query(
+      'SELECT * FROM suppliers WHERE supplier_id = $1',
+      [user.supplier_id]
     )
 
-    if (!providerResult.data || providerResult.data.length === 0) {
-      console.log('❌ [Portal Auth] Proveedor no encontrado en suppliers:', user.provider_id)
+    if (providerError || !providerData || providerData.length === 0) {
+      console.log('❌ [Portal Auth] Proveedor no encontrado en suppliers:', user.supplier_id)
       return NextResponse.json(
         { error: 'Proveedor no encontrado' },
         { status: 404 }
       )
     }
 
-    const provider = providerResult.data[0]
+    const provider = providerData[0]
+
+    // Actualizar último login
+    await pgClient.query(
+      'UPDATE provider_users SET last_login = NOW() WHERE id = $1',
+      [user.id]
+    )
 
     // Generar JWT
     const token = jwt.sign(
       {
         userId: user.id,
-        providerId: user.provider_id,
+        providerId: user.supplier_id,
         email: user.email,
         role: 'provider',
         providerName: provider.name
@@ -78,8 +84,10 @@ export async function POST(request: NextRequest) {
       user: {
         id: user.id,
         email: user.email,
-        providerId: user.provider_id,
+        providerId: user.supplier_id,
         providerName: provider.name,
+        userName: user.name,
+        companyName: user.company_name,
         role: 'provider'
       }
     })

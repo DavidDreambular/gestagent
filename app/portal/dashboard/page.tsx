@@ -12,7 +12,8 @@ import {
   Calendar,
   Bell,
   Eye,
-  Download
+  Download,
+  Settings
 } from 'lucide-react';
 import NotificationsPanel from './components/NotificationsPanel';
 
@@ -47,29 +48,34 @@ export default function PortalDashboard() {
   // Cargar datos del dashboard
   const loadDashboardData = async () => {
     try {
-      const token = localStorage.getItem('portal_token');
-      if (!token) {
+      // Verificar autenticación primero
+      const authResponse = await fetch('/api/portal/auth/profile', {
+        credentials: 'include'
+      });
+
+      if (!authResponse.ok) {
         router.push('/portal/login');
         return;
       }
 
       // Cargar estadísticas
-      const statsResponse = await fetch('/api/portal/dashboard/stats', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      const statsResponse = await fetch('/api/portal/documents/stats', {
+        credentials: 'include'
       });
 
       if (statsResponse.ok) {
         const statsData = await statsResponse.json();
-        setStats(statsData);
+        setStats({
+          totalDocuments: statsData.total || 0,
+          pendingDocuments: statsData.pending || 0,
+          completedDocuments: statsData.processed || 0,
+          monthlyUploads: statsData.monthly || 0
+        });
       }
 
       // Cargar documentos recientes
-      const docsResponse = await fetch('/api/portal/dashboard/documents?limit=5', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      const docsResponse = await fetch('/api/portal/documents?limit=5', {
+        credentials: 'include'
       });
 
       if (docsResponse.ok) {
@@ -337,10 +343,21 @@ export default function PortalDashboard() {
               </button>
 
               <button
+                onClick={() => router.push('/portal/settings')}
+                className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <Settings className="w-6 h-6 text-purple-600" />
+                <div className="text-left">
+                  <p className="font-medium text-gray-900">Configuración</p>
+                  <p className="text-sm text-gray-500">Preferencias y notificaciones</p>
+                </div>
+              </button>
+
+              <button
                 onClick={() => router.push('/portal/help')}
                 className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
               >
-                <AlertCircle className="w-6 h-6 text-purple-600" />
+                <AlertCircle className="w-6 h-6 text-orange-600" />
                 <div className="text-left">
                   <p className="font-medium text-gray-900">Ayuda</p>
                   <p className="text-sm text-gray-500">Soporte técnico</p>

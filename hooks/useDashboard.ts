@@ -1,4 +1,4 @@
-// Hook para datos del dashboard - Versión Mock sin Supabase
+// Hook para datos del dashboard - Versión con PostgreSQL
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -25,21 +25,7 @@ export interface RecentActivity {
   user?: string;
 }
 
-// Datos mock para el dashboard
-const mockStats: DashboardStats = {
-  totalDocuments: 156,
-  completedDocuments: 142,
-  processingDocuments: 8,
-  errorDocuments: 6,
-  recentDocuments: 23,
-  successRate: 91.0,
-  avgProcessingTime: 2.4,
-  documentsThisMonth: 45,
-  documentsLastMonth: 38,
-  growthRate: 18.4
-};
-
-const mockRecentActivity: RecentActivity[] = [
+// Los datos se cargarán desde la API
   {
     id: '1',
     type: 'document_processed',
@@ -96,13 +82,16 @@ export function useDashboard() {
       
       console.log('📊 [DASHBOARD] Cargando datos del dashboard...');
       
-      // Simular carga asíncrona
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      setStats(mockStats);
-      setRecentActivity(mockRecentActivity);
-      
-      console.log('✅ [DASHBOARD] Datos cargados exitosamente');
+      const response = await fetch('/api/dashboard/stats');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data) {
+          setStats(data.data);
+          console.log('✅ [DASHBOARD] Datos cargados exitosamente');
+        }
+      } else {
+        throw new Error('Error al cargar estadísticas');
+      }
       
     } catch (err) {
       console.error('❌ [DASHBOARD] Error cargando datos:', err);
@@ -125,10 +114,10 @@ export function useDashboard() {
     const multiplier = multipliers[period];
     
     return {
-      documents: Math.round(mockStats.totalDocuments * multiplier),
-      processed: Math.round(mockStats.completedDocuments * multiplier),
-      errors: Math.round(mockStats.errorDocuments * multiplier),
-      successRate: mockStats.successRate
+      documents: Math.round((stats?.totalDocuments || 0) * multiplier),
+      processed: Math.round((stats?.completedDocuments || 0) * multiplier),
+      errors: Math.round((stats?.errorDocuments || 0) * multiplier),
+      successRate: stats?.successRate || 0
     };
   }, []);
 

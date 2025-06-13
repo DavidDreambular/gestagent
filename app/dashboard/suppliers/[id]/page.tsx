@@ -30,6 +30,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import Link from 'next/link';
+import { InvoiceHistory } from '@/components/entities/InvoiceHistory';
 
 interface Supplier {
   supplier_id: string;
@@ -472,50 +473,11 @@ export default function SupplierDetailPage() {
 
         {/* Tab: Documentos */}
         <TabsContent value="documents" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Historial de Documentos</CardTitle>
-              <CardDescription>
-                Todos los documentos procesados para este proveedor
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {documents && documents.length > 0 ? (
-                <div className="space-y-3">
-                  {documents.map((doc) => (
-                    <div key={doc.job_id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                      <div className="flex items-center space-x-3">
-                        <FileText className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <p className="text-sm font-medium">
-                            {doc.document_type} - {doc.emitter_name || 'Sin emisor'}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatShortDate(doc.document_date)} • {formatCurrency(doc.total_amount || 0)}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Badge variant={doc.status === 'completed' ? 'default' : 'secondary'}>
-                          {doc.status === 'completed' ? 'Completado' : doc.status}
-                        </Badge>
-                        <Button variant="outline" size="sm" asChild>
-                          <Link href={`/dashboard/documents/${doc.job_id}`}>
-                            Ver
-                          </Link>
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground">No hay documentos para este proveedor</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <InvoiceHistory
+            entityType="supplier"
+            entityId={supplier.supplier_id}
+            entityName={supplier.name}
+          />
         </TabsContent>
 
         {/* Tab: Análisis */}

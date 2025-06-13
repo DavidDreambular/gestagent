@@ -189,6 +189,21 @@ async function processDocumentWithMistral(
     const allInvoices = extractedData?.detected_invoices || [];
     console.log(`🔍 [UPLOAD-MULTIPLE] Procesando ${allInvoices.length} facturas detectadas en ${job.file.name}`);
     
+    // DEBUG: Logging detallado de facturas detectadas
+    if (allInvoices.length > 0) {
+      console.log(`📋 [DEBUG] Facturas detectadas:`);
+      allInvoices.forEach((invoice, index) => {
+        console.log(`   📄 Factura ${index + 1}:`);
+        console.log(`      📋 Número: ${invoice.invoice_number || 'Sin número'}`);
+        console.log(`      🏢 Proveedor: ${invoice.supplier?.name || 'Sin proveedor'} (${invoice.supplier?.nif_cif || 'Sin NIF'})`);
+        console.log(`      👤 Cliente: ${invoice.customer?.name || 'Sin cliente'} (${invoice.customer?.nif_cif || 'Sin NIF'})`);
+        console.log(`      💰 Importe: ${invoice.total_amount || 'Sin importe'}`);
+      });
+    } else {
+      console.warn(`⚠️ [UPLOAD-MULTIPLE] No se detectaron facturas en el extractedData`);
+      console.log(`🔍 [DEBUG] extractedData structure:`, JSON.stringify(extractedData, null, 2));
+    }
+    
     // Procesar información usando TODAS las facturas
     let emitterName = 'Desconocido';
     let emitterNif = null;
@@ -329,6 +344,21 @@ async function processDocumentWithMistral(
       job.id, 
       mistralResult.total_invoices_detected || 0
     );
+
+    // Enviar notificación de resumen de descubrimientos si se procesaron múltiples facturas
+    if (allInvoices.length > 1 && relationResults.length > 0) {
+      const discoveryCount = relationResults.filter(op => 
+        op.includes('procesado:') || op.includes('creado exitosamente')
+      ).length;
+      
+      if (discoveryCount > 0) {
+        await unifiedNotificationService.notifySystemWarning(
+          job.userId,
+          `Múltiples entidades descubiertas`,
+          `Se han detectado ${allInvoices.length} facturas en "${job.file.name}". Se procesaron ${discoveryCount} nuevas entidades comerciales. Revisa la sección de proveedores y clientes para ver los nuevos registros.`
+        );
+      }
+    }
 
     job.endTime = Date.now();
     job.status = 'completed';

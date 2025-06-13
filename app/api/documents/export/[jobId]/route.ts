@@ -4,11 +4,12 @@
 // POST: Permite especificar formato de export (JSON, PDF, CSV)
 
 import { NextRequest, NextResponse } from 'next/server';
+import { dbAdapter } from '@/lib/db-adapter';
+import { unifiedNotificationService } from '@/lib/services/unified-notification.service';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
-
-// Importar función para obtener documentos de la base temporal
-import { getAllDocumentsFromMockDB } from '@/lib/mock-db';
 
 // Handler GET - Exportar datos de un documento en JSON
 export async function GET(
@@ -25,29 +26,48 @@ export async function GET(
       );
     }
 
-    // Buscar el documento en la base temporal
-    const allDocuments = getAllDocumentsFromMockDB();
-    const document = allDocuments.find((doc: any) => doc.jobId === jobId);
-
-    if (!document) {
+    // Buscar el documento en PostgreSQL
+    const result = await dbAdapter.query(
+      'SELECT * FROM documents WHERE job_id = $1',
+      [jobId]
+    );
+    
+    if (!result.rows || result.rows.length === 0) {
       return NextResponse.json(
         { error: 'Documento no encontrado' },
         { status: 404 }
       );
     }
+    
+    const document = result.rows[0];
+
+    // Verificar autenticación para notificación
+    const session = await getServerSession(authOptions);
+    const userId = session?.user?.id;
 
     // Preparar datos para exportación
     const exportData = {
       metadata: {
-        jobId: document.jobId,
-        documentType: document.documentType,
+        jobId: document.job_id,
+        documentType: document.document_type,
         exportTimestamp: new Date().toISOString(),
         processingMetadata: document.processing_metadata,
-        uploadTimestamp: document.uploadTimestamp
+        uploadTimestamp: document.upload_timestamp
       },
-      extractedData: document.extracted_data,
-      documentUrl: document.document_url
+      extractedData: document.processed_json,
+      originalFilename: document.original_filename
     };
+
+    const filename = `documento_${jobId}.json`;
+
+    // Enviar notificación de exportación completada
+    if (userId) {
+      await unifiedNotificationService.notifyExportCompleted(
+        userId,
+        'Documento JSON',
+        filename
+      );
+    }
 
     // Crear respuesta con headers para descarga
     const response = new NextResponse(
@@ -56,11 +76,13 @@ export async function GET(
         status: 200,
         headers: {
           'Content-Type': 'application/json',
-          'Content-Disposition': `attachment; filename="documento_${jobId}.json"`,
+          'Content-Disposition': `attachment; filename="${filename}"`,
           'Cache-Control': 'no-cache'
         }
       }
     );
+
+    console.log(`📄 [Export] Exportando documento ${jobId} en formato json`);
 
     return response;
 
@@ -95,53 +117,25 @@ export async function POST(
 
     console.log(`📄 [Export] Exportando documento ${jobId} en formato ${format}`);
 
-    // Buscar el documento en la base temporal
-    const allDocuments = getAllDocumentsFromMockDB();
-    const document = allDocuments.find((doc: any) => doc.jobId === jobId);
-
-    if (!document) {
+    // Buscar el documento en PostgreSQL
+    const result = await dbAdapter.query(
+      'SELECT * FROM documents WHERE job_id = $1',
+      [jobId]
+    );
+    
+    if (!result.rows || result.rows.length === 0) {
       return NextResponse.json(
         { error: 'Documento no encontrado' },
         { status: 404 }
       );
     }
+    
+    const document = result.rows[0];
 
     switch (format.toLowerCase()) {
-      case 'pdf':
-        // Para PDF, redirigir a la URL original del documento
-        if (document.document_url) {
-          try {
-            const response = await fetch(document.document_url);
-            if (response.ok) {
-              const pdfBlob = await response.blob();
-              return new NextResponse(pdfBlob, {
-                status: 200,
-                headers: {
-                  'Content-Type': 'application/pdf',
-                  'Content-Disposition': `attachment; filename="documento_${jobId}.pdf"`,
-                  'Cache-Control': 'no-cache'
-                }
-              });
-            } else {
-              throw new Error(`Error descargando PDF: ${response.status}`);
-            }
-          } catch (error) {
-            console.error('❌ [Export] Error descargando PDF:', error);
-            return NextResponse.json(
-              { error: 'Error descargando PDF original', details: error instanceof Error ? error.message : 'Error desconocido' },
-              { status: 500 }
-            );
-          }
-        } else {
-          return NextResponse.json(
-            { error: 'URL del PDF no disponible' },
-            { status: 404 }
-          );
-        }
-
       case 'csv':
         // Exportar datos extraídos como CSV
-        const csvData = convertToCSV(document.extracted_data, jobId);
+        const csvData = convertToCSV(document.processed_json, jobId);
         return new NextResponse(csvData, {
           status: 200,
           headers: {
@@ -156,14 +150,14 @@ export async function POST(
         // Exportar como JSON (comportamiento por defecto)
         const exportData = {
           metadata: {
-            jobId: document.jobId,
-            documentType: document.documentType,
+            jobId: document.job_id,
+            documentType: document.document_type,
             exportTimestamp: new Date().toISOString(),
             processingMetadata: document.processing_metadata,
-            uploadTimestamp: document.uploadTimestamp
+            uploadTimestamp: document.upload_timestamp
           },
-          extractedData: document.extracted_data,
-          documentUrl: document.document_url
+          extractedData: document.processed_json,
+          originalFilename: document.original_filename
         };
 
         return new NextResponse(
@@ -233,4 +227,4 @@ function convertToCSV(extractedData: any, jobId: string): string {
     console.error('Error converting to CSV:', error);
     return `JobID,Error\n"${jobId}","Error procesando datos"`;
   }
-} 
+}

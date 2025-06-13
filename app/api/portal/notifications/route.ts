@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { postgresqlClient } from '@/lib/postgresql-client';
-import { getToken } from 'next-auth/jwt';
+import pgClient from '@/lib/postgresql-client';
+import jwt from 'jsonwebtoken';
 
 /**
  * GET /api/portal/notifications
@@ -8,19 +8,32 @@ import { getToken } from 'next-auth/jwt';
  */
 export async function GET(request: NextRequest) {
   try {
-    // Verificar autenticación
-    const token = await getToken({ req: request });
-    if (!token || token.role !== 'provider') {
+    const token = request.cookies.get('portal-token')?.value
+
+    if (!token) {
       return NextResponse.json(
-        { error: 'No autorizado - Solo para proveedores' },
+        { error: 'No autenticado' },
         { status: 401 }
-      );
+      )
     }
 
-    const supplierId = token.supplier_id as string;
-    if (!supplierId) {
+    // Verificar y decodificar el token
+    const decoded = jwt.verify(
+      token,
+      process.env.NEXTAUTH_SECRET || 'fallback-secret'
+    ) as any
+
+    if (!decoded || decoded.role !== 'provider') {
       return NextResponse.json(
-        { error: 'ID de proveedor no encontrado' },
+        { error: 'Token inválido' },
+        { status: 401 }
+      )
+    }
+
+    const userId = decoded.userId;
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'ID de usuario no encontrado' },
         { status: 400 }
       );
     }
@@ -31,39 +44,38 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0');
     const onlyUnread = searchParams.get('unread') === 'true';
 
-    console.log('📢 [Portal Notifications] Obteniendo notificaciones para proveedor:', supplierId);
+    console.log('📢 [Portal Notifications] Obteniendo notificaciones para usuario:', userId);
 
     // Construir query
     let query = `
       SELECT 
         id,
-        document_id,
-        type,
         title,
         message,
-        metadata,
+        type,
+        is_read,
+        action_url,
         created_at,
-        read_at,
-        CASE WHEN read_at IS NULL THEN true ELSE false END as unread
+        read_at
       FROM provider_notifications 
-      WHERE supplier_id = $1
+      WHERE provider_user_id = $1
     `;
 
-    const params: any[] = [supplierId];
+    const params: any[] = [userId];
     let paramIndex = 2;
 
     if (onlyUnread) {
-      query += ` AND read_at IS NULL`;
+      query += ` AND is_read = false`;
     }
 
     query += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(limit, offset);
 
     // Ejecutar consulta
-    const result = await postgresqlClient.query(query, params);
+    const { data: result, error: queryError } = await pgClient.query(query, params);
 
-    if (result.error) {
-      console.error('❌ [Portal Notifications] Error obteniendo notificaciones:', result.error);
+    if (queryError) {
+      console.error('❌ [Portal Notifications] Error obteniendo notificaciones:', queryError);
       return NextResponse.json(
         { error: 'Error obteniendo notificaciones' },
         { status: 500 }
@@ -71,19 +83,19 @@ export async function GET(request: NextRequest) {
     }
 
     // Obtener conteo de no leídas
-    const unreadCountResult = await postgresqlClient.query(
-      'SELECT COUNT(*) as unread_count FROM provider_notifications WHERE supplier_id = $1 AND read_at IS NULL',
-      [supplierId]
+    const { data: unreadCountResult, error: countError } = await pgClient.query(
+      'SELECT COUNT(*) as unread_count FROM provider_notifications WHERE provider_user_id = $1 AND is_read = false',
+      [userId]
     );
 
-    const unreadCount = parseInt(unreadCountResult.data?.[0]?.unread_count || '0');
+    const unreadCount = parseInt(unreadCountResult?.[0]?.unread_count || '0');
 
-    console.log('✅ [Portal Notifications] Notificaciones obtenidas:', result.data?.length || 0);
+    console.log('✅ [Portal Notifications] Notificaciones obtenidas:', result?.length || 0);
 
     return NextResponse.json({
-      notifications: result.data || [],
+      notifications: result || [],
       unreadCount,
-      total: result.count || 0,
+      total: result?.length || 0,
       limit,
       offset
     });
@@ -103,19 +115,32 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    // Verificar autenticación
-    const token = await getToken({ req: request });
-    if (!token || token.role !== 'provider') {
+    const token = request.cookies.get('portal-token')?.value
+
+    if (!token) {
       return NextResponse.json(
-        { error: 'No autorizado - Solo para proveedores' },
+        { error: 'No autenticado' },
         { status: 401 }
-      );
+      )
     }
 
-    const supplierId = token.supplier_id as string;
-    if (!supplierId) {
+    // Verificar y decodificar el token
+    const decoded = jwt.verify(
+      token,
+      process.env.NEXTAUTH_SECRET || 'fallback-secret'
+    ) as any
+
+    if (!decoded || decoded.role !== 'provider') {
       return NextResponse.json(
-        { error: 'ID de proveedor no encontrado' },
+        { error: 'Token inválido' },
+        { status: 401 }
+      )
+    }
+
+    const userId = decoded.userId;
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'ID de usuario no encontrado' },
         { status: 400 }
       );
     }
@@ -129,22 +154,22 @@ export async function POST(request: NextRequest) {
     let params: any[];
 
     if (markAllAsRead) {
-      // Marcar todas las notificaciones del proveedor como leídas
+      // Marcar todas las notificaciones del usuario como leídas
       query = `
         UPDATE provider_notifications 
-        SET read_at = NOW() 
-        WHERE supplier_id = $1 AND read_at IS NULL
+        SET is_read = true, read_at = NOW() 
+        WHERE provider_user_id = $1 AND is_read = false
       `;
-      params = [supplierId];
+      params = [userId];
     } else if (notificationIds && Array.isArray(notificationIds)) {
       // Marcar notificaciones específicas como leídas
       const placeholders = notificationIds.map((_, i) => `$${i + 2}`).join(',');
       query = `
         UPDATE provider_notifications 
-        SET read_at = NOW() 
-        WHERE supplier_id = $1 AND id IN (${placeholders}) AND read_at IS NULL
+        SET is_read = true, read_at = NOW() 
+        WHERE provider_user_id = $1 AND id IN (${placeholders}) AND is_read = false
       `;
-      params = [supplierId, ...notificationIds];
+      params = [userId, ...notificationIds];
     } else {
       return NextResponse.json(
         { error: 'Parámetros inválidos' },
@@ -152,10 +177,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await postgresqlClient.query(query, params);
+    const { data: result, error: updateError } = await pgClient.query(query, params);
 
-    if (result.error) {
-      console.error('❌ [Portal Notifications] Error marcando como leídas:', result.error);
+    if (updateError) {
+      console.error('❌ [Portal Notifications] Error marcando como leídas:', updateError);
       return NextResponse.json(
         { error: 'Error marcando notificaciones como leídas' },
         { status: 500 }

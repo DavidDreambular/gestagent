@@ -5,14 +5,13 @@ import { Bell, Check, CheckCheck, Clock, AlertCircle, FileText, X } from 'lucide
 
 interface Notification {
   id: string;
-  document_id: string;
-  type: 'document_received' | 'document_validated' | 'document_error' | 'information_required';
   title: string;
   message: string;
-  metadata: any;
+  type: 'success' | 'info' | 'warning' | 'error';
+  is_read: boolean;
+  action_url?: string;
   created_at: string;
   read_at: string | null;
-  unread: boolean;
 }
 
 interface NotificationsPanelProps {
@@ -21,17 +20,17 @@ interface NotificationsPanelProps {
 }
 
 const NOTIFICATION_ICONS = {
-  document_received: FileText,
-  document_validated: CheckCheck,
-  document_error: AlertCircle,
-  information_required: Clock
+  success: CheckCheck,
+  info: FileText,
+  warning: Clock,
+  error: AlertCircle
 };
 
 const NOTIFICATION_COLORS = {
-  document_received: 'text-blue-600 bg-blue-100',
-  document_validated: 'text-green-600 bg-green-100',
-  document_error: 'text-red-600 bg-red-100',
-  information_required: 'text-yellow-600 bg-yellow-100'
+  success: 'text-green-600 bg-green-100',
+  info: 'text-blue-600 bg-blue-100',
+  warning: 'text-yellow-600 bg-yellow-100',
+  error: 'text-red-600 bg-red-100'
 };
 
 export function NotificationsPanel({ supplierId, compact = false }: NotificationsPanelProps) {
@@ -44,9 +43,6 @@ export function NotificationsPanel({ supplierId, compact = false }: Notification
   // Cargar notificaciones
   const loadNotifications = async (unreadOnly = false) => {
     try {
-      const token = localStorage.getItem('portal_token');
-      if (!token) return;
-
       const params = new URLSearchParams({
         limit: compact ? '5' : '20',
         offset: '0'
@@ -57,9 +53,7 @@ export function NotificationsPanel({ supplierId, compact = false }: Notification
       }
 
       const response = await fetch(`/api/portal/notifications?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        credentials: 'include'
       });
 
       if (response.ok) {
@@ -78,16 +72,13 @@ export function NotificationsPanel({ supplierId, compact = false }: Notification
   const markAsRead = async (notificationIds: string[]) => {
     try {
       setMarkingAsRead(prev => [...prev, ...notificationIds]);
-      
-      const token = localStorage.getItem('portal_token');
-      if (!token) return;
 
       const response = await fetch('/api/portal/notifications', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({ notificationIds })
       });
 
@@ -96,7 +87,7 @@ export function NotificationsPanel({ supplierId, compact = false }: Notification
         setNotifications(prev => 
           prev.map(notif => 
             notificationIds.includes(notif.id) 
-              ? { ...notif, read_at: new Date().toISOString(), unread: false }
+              ? { ...notif, read_at: new Date().toISOString(), is_read: true }
               : notif
           )
         );
@@ -112,15 +103,12 @@ export function NotificationsPanel({ supplierId, compact = false }: Notification
   // Marcar todas como leídas
   const markAllAsRead = async () => {
     try {
-      const token = localStorage.getItem('portal_token');
-      if (!token) return;
-
       const response = await fetch('/api/portal/notifications', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({ markAllAsRead: true })
       });
 
@@ -129,7 +117,7 @@ export function NotificationsPanel({ supplierId, compact = false }: Notification
           prev.map(notif => ({ 
             ...notif, 
             read_at: new Date().toISOString(), 
-            unread: false 
+            is_read: true 
           }))
         );
         setUnreadCount(0);
@@ -296,7 +284,7 @@ function NotificationItem({ notification, onMarkAsRead, isMarking, formatDate, c
   return (
     <div 
       className={`p-4 hover:bg-gray-50 transition-colors ${
-        notification.unread ? 'bg-blue-50 border-l-4 border-blue-500' : ''
+        !notification.is_read ? 'bg-blue-50 border-l-4 border-blue-500' : ''
       }`}
     >
       <div className="flex items-start space-x-3">
@@ -307,12 +295,12 @@ function NotificationItem({ notification, onMarkAsRead, isMarking, formatDate, c
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between">
             <h4 className={`text-sm font-medium ${
-              notification.unread ? 'text-gray-900' : 'text-gray-600'
+              !notification.is_read ? 'text-gray-900' : 'text-gray-600'
             }`}>
               {notification.title}
             </h4>
             
-            {notification.unread && (
+            {!notification.is_read && (
               <button
                 onClick={() => onMarkAsRead([notification.id])}
                 disabled={isMarking}
@@ -326,7 +314,7 @@ function NotificationItem({ notification, onMarkAsRead, isMarking, formatDate, c
           
           <p className={`text-sm mt-1 ${
             compact ? 'line-clamp-2' : ''
-          } ${notification.unread ? 'text-gray-700' : 'text-gray-500'}`}>
+          } ${!notification.is_read ? 'text-gray-700' : 'text-gray-500'}`}>
             {notification.message}
           </p>
           
@@ -335,9 +323,9 @@ function NotificationItem({ notification, onMarkAsRead, isMarking, formatDate, c
               {formatDate(notification.created_at)}
             </span>
             
-            {notification.metadata?.documentNumber && (
+            {notification.action_url && (
               <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                {notification.metadata.documentNumber}
+                Ver detalles
               </span>
             )}
           </div>

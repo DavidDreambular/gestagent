@@ -241,15 +241,15 @@ export default function SuppliersPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Facturación Total</CardTitle>
+            <CardTitle className="text-sm font-medium">Documentos Totales</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(suppliers.reduce((sum, s) => sum + s.total_amount, 0))}
+              {suppliers.reduce((sum, s) => sum + (s.document_count || 0), 0)}
             </div>
             <p className="text-xs text-muted-foreground">
-              este año
+              facturas procesadas
             </p>
           </CardContent>
         </Card>
@@ -346,7 +346,7 @@ export default function SuppliersPage() {
       {/* Lista de proveedores */}
       <div className="grid gap-4">
         {suppliers.map((supplier) => (
-          <Card key={supplier.supplier_id} className="hover:shadow-md transition-shadow">
+          <Card key={supplier.supplier_id || supplier.id} className="hover:shadow-md transition-shadow">
             <CardContent className="p-6">
               <div className="flex items-start justify-between">
                 <div className="flex-1 space-y-3">
@@ -421,8 +421,9 @@ export default function SuppliersPage() {
                       <Button
                         variant="destructive"
                         size="sm"
-                        onClick={() => handleDeleteSupplier(supplier.supplier_id, supplier.name)}
+                        onClick={() => handleDeleteSupplier(supplier.supplier_id || supplier.id, supplier.name)}
                         className="flex items-center gap-1"
+                        disabled={!supplier.supplier_id && !supplier.id}
                       >
                         <Trash2 className="h-3 w-3" />
                         Eliminar

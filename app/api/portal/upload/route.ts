@@ -1,37 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import { pool } from '@/lib/postgresql-client';
+import pgClient from '@/lib/postgresql-client';
 import { v4 as uuidv4 } from 'uuid';
-import { ProviderNotifications } from '@/lib/services/provider-notifications';
+import fs from 'fs';
+import path from 'path';
 
 export async function POST(request: NextRequest) {
   try {
-    // Verificar autenticación
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const token = request.cookies.get('portal-token')?.value
+
+    if (!token) {
       return NextResponse.json(
-        { error: 'Token de autorización requerido' },
+        { error: 'No autenticado' },
         { status: 401 }
-      );
+      )
     }
 
-    const token = authHeader.substring(7);
-    let decoded;
-    
-    try {
-      decoded = jwt.verify(token, process.env.NEXTAUTH_SECRET || 'fallback-secret') as any;
-    } catch (error) {
+    // Verificar y decodificar el token
+    const decoded = jwt.verify(
+      token,
+      process.env.NEXTAUTH_SECRET || 'fallback-secret'
+    ) as any
+
+    if (!decoded || decoded.role !== 'provider') {
       return NextResponse.json(
         { error: 'Token inválido' },
         { status: 401 }
-      );
-    }
-
-    if (decoded.role !== 'provider') {
-      return NextResponse.json(
-        { error: 'Acceso no autorizado' },
-        { status: 403 }
-      );
+      )
     }
 
     // Obtener datos del formulario
@@ -51,7 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validar que el supplier_id coincida con el token
-    if (supplierId !== decoded.supplier_id) {
+    if (supplierId !== decoded.providerId) {
       return NextResponse.json(
         { error: 'No autorizado para este proveedor' },
         { status: 403 }
@@ -81,71 +76,71 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Insertar documento en la base de datos
-    const insertQuery = `
-      INSERT INTO documents (
-        job_id,
-        document_type,
-        raw_text,
-        processed_json,
-        upload_timestamp,
-        user_id,
-        status,
-        emitter_name,
-        receiver_name,
-        document_date,
-        title,
-        file_path,
-        version,
-        source
-      ) VALUES (
-        $1, $2, $3, $4, NOW(), $5, $6, $7, $8, $9, $10, $11, $12, $13
-      ) RETURNING *
-    `;
+    // Crear directorio de uploads si no existe
+    const uploadsDir = path.join(process.cwd(), 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
 
+    // Guardar archivo
+    const fileName = `${Date.now()}_${file.name}`;
+    const filePath = path.join(uploadsDir, fileName);
+    fs.writeFileSync(filePath, buffer);
+
+    // Preparar datos para inserción
     const documentData = {
       document_number: documentNumber,
       document_type: documentType,
       description: description || '',
-      supplier_id: supplierId,
-      supplier_name: supplierName,
+      supplier: {
+        id: supplierId,
+        name: supplierName
+      },
       uploaded_by: 'portal_provider',
       file_size: file.size,
-      file_name: file.name
+      file_name: file.name,
+      uploaded_at: new Date().toISOString()
     };
 
-    const result = await pool.query(insertQuery, [
+    // Insertar documento en la tabla document_processing
+    const insertQuery = `
+      INSERT INTO document_processing (
+        job_id,
+        document_type,
+        file_path,
+        processed_json,
+        upload_timestamp,
+        status
+      ) VALUES (
+        $1, $2, $3, $4, NOW(), $5
+      ) RETURNING *
+    `;
+
+    const { data: result, error: insertError } = await pgClient.query(insertQuery, [
       jobId,
       documentType,
-      '', // raw_text - se llenará después del procesamiento
-      JSON.stringify(documentData), // processed_json con metadata
-      decoded.id, // user_id del proveedor
-      'pending', // status inicial
-      supplierName, // emitter_name
-      'Gestoría', // receiver_name
-      new Date().toISOString().split('T')[0], // document_date
-      `${documentType} - ${documentNumber}`, // title
-      `portal_uploads/${jobId}.pdf`, // file_path
-      1, // version
-      'portal_provider' // source
+      filePath,
+      JSON.stringify(documentData),
+      'pending'
     ]);
 
-    const document = result.rows[0];
+    if (insertError) {
+      console.error('❌ [Portal Upload] Error insertando documento:', insertError);
+      return NextResponse.json(
+        { error: 'Error guardando documento' },
+        { status: 500 }
+      );
+    }
 
-    // Aquí se podría integrar con el procesamiento OCR
-    // Por ahora, marcamos como recibido
-    await pool.query(
-      'UPDATE documents SET status = $1 WHERE job_id = $2',
-      ['received', jobId]
-    );
+    const document = result[0];
 
     // Registrar en audit_logs si existe la tabla
     try {
-      await pool.query(
+      await pgClient.query(
         `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, new_values, created_at)
          VALUES ($1, $2, $3, $4, $5, NOW())`,
         [
-          decoded.id,
+          decoded.userId,
           'CREATE',
           'document',
           jobId,
@@ -162,18 +157,23 @@ export async function POST(request: NextRequest) {
       console.log('Audit log not available:', auditError);
     }
 
-    // Enviar notificación al proveedor
+    // Enviar notificación (base de datos + email)
     try {
-      await ProviderNotifications.documentReceived(supplierId, jobId, {
-        documentName: `${documentType} - ${documentNumber}`,
-        documentNumber: documentNumber,
+      const { notificationService } = await import('@/lib/services/notification-service')
+      
+      await notificationService.notifyDocumentUploaded({
+        userId: decoded.userId,
+        documentId: jobId,
         documentType: documentType,
-        supplierName: supplierName
-      });
+        documentNumber: documentNumber,
+        uploadTimestamp: new Date().toISOString()
+      })
     } catch (notificationError) {
       console.error('Error enviando notificación:', notificationError);
       // No fallar la subida por error de notificación
     }
+
+    console.log('✅ [Portal Upload] Documento subido exitosamente:', jobId);
 
     return NextResponse.json({
       success: true,
@@ -181,9 +181,9 @@ export async function POST(request: NextRequest) {
         job_id: jobId,
         document_type: documentType,
         document_number: documentNumber,
-        status: 'received',
+        status: 'pending',
         upload_timestamp: document.upload_timestamp,
-        title: document.title
+        title: `${documentType} - ${documentNumber}`
       },
       message: 'Documento subido exitosamente y en cola de procesamiento'
     });

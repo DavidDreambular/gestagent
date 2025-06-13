@@ -1,4 +1,4 @@
-// Hook para gestión de documentos - Versión Mock sin Supabase
+// Hook para gestión de documentos - Versión con PostgreSQL
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -19,62 +19,29 @@ export interface Document {
   file_path?: string;
 }
 
-// Datos mock temporales
-const mockDocuments: Document[] = [
-  {
-    job_id: '1',
-    document_type: 'invoice',
-    upload_timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    user_id: 'mock-user',
-    status: 'completed',
-    emitter_name: 'Empresa ABC S.L.',
-    receiver_name: 'Cliente XYZ',
-    document_date: '2024-12-01',
-    version: 1,
-    title: 'Factura #001'
-  },
-  {
-    job_id: '2',
-    document_type: 'payslip',
-    upload_timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    user_id: 'mock-user',
-    status: 'processing',
-    emitter_name: 'Recursos Humanos',
-    receiver_name: 'Empleado DEF',
-    document_date: '2024-11-30',
-    version: 1,
-    title: 'Nómina Noviembre 2024'
-  },
-  {
-    job_id: '3',
-    document_type: 'invoice',
-    upload_timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-    user_id: 'mock-user',
-    status: 'error',
-    emitter_name: 'Proveedor GHI',
-    receiver_name: 'Mi Empresa',
-    document_date: '2024-11-28',
-    version: 1,
-    title: 'Factura #002'
-  }
-];
+// Los documentos se cargarán desde la API
 
 export function useDocuments() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Cargar documentos mock
+  // Cargar documentos desde la API
   const loadDocuments = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Simular carga asíncrona
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      setDocuments(mockDocuments);
-      console.log('📄 [DOCUMENTS] Documentos mock cargados:', mockDocuments.length);
+      const response = await fetch('/api/documents');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.documents) {
+          setDocuments(data.documents);
+          console.log('📄 [DOCUMENTS] Documentos cargados desde la API:', data.documents.length);
+        }
+      } else {
+        throw new Error('Error al cargar documentos');
+      }
       
     } catch (err) {
       console.error('❌ [DOCUMENTS] Error cargando documentos:', err);

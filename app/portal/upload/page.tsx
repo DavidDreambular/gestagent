@@ -33,29 +33,34 @@ export default function PortalUpload() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   useEffect(() => {
-    // Verificar autenticación
-    const token = localStorage.getItem('portal_token');
-    if (!token) {
-      router.push('/portal/login');
-      return;
-    }
-
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      setProvider({
-        id: payload.id,
-        email: payload.email,
-        supplier: {
-          id: payload.supplier_id,
-          name: payload.supplier_name,
-          nif: payload.supplier_nif
-        }
-      });
-    } catch (error) {
-      console.error('Error decodificando token:', error);
-      router.push('/portal/login');
-    }
+    checkAuth();
   }, [router]);
+
+  const checkAuth = async () => {
+    try {
+      const response = await fetch('/api/portal/auth/profile', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const userData = await response.json();
+        setProvider({
+          id: userData.user.id,
+          email: userData.user.email,
+          supplier: {
+            id: userData.user.providerId,
+            name: userData.user.providerName,
+            nif: userData.user.providerNif || 'N/A'
+          }
+        });
+      } else {
+        router.push('/portal/login');
+      }
+    } catch (error) {
+      console.error('Error verificando autenticación:', error);
+      router.push('/portal/login');
+    }
+  };
 
   const onDrop = (acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
@@ -103,9 +108,7 @@ export default function PortalUpload() {
 
       const response = await fetch('/api/portal/upload', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('portal_token')}`
-        },
+        credentials: 'include',
         body: formData
       });
 

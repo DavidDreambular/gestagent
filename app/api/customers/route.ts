@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
         metadata: {
           total: totalCount,
           total_active: customers?.filter((c: any) => c.status === 'active').length || 0,
-          available_types: [...new Set(customers?.map((c: any) => c.customer_type).filter(Boolean) || [])]
+          available_types: Array.from(new Set(customers?.map((c: any) => c.customer_type).filter(Boolean) || []))
         }
       },
       pagination: {

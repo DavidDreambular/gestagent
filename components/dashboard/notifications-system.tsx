@@ -12,118 +12,61 @@ import {
   Users, 
   FileText,
   X,
-  Clock
+  Clock,
+  FileCheck,
+  FileX,
+  Share2,
+  Download,
+  Package
 } from 'lucide-react';
-
-interface Notification {
-  id: string;
-  type: 'supplier_created' | 'customer_created' | 'document_processed' | 'error';
-  title: string;
-  message: string;
-  timestamp: string;
-  read: boolean;
-  data?: any;
-}
+import { useNotifications } from '@/contexts/NotificationContext';
+import { toast } from 'sonner';
 
 interface NotificationsSystemProps {
   className?: string;
 }
 
 export function NotificationsSystem({ className }: NotificationsSystemProps) {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification, refresh } = useNotifications();
   const [showPanel, setShowPanel] = useState(false);
 
-  // Simular notificaciones para demo
+  // Refrescar notificaciones al abrir el panel
   useEffect(() => {
-    const createMockNotifications = () => {
-      const mockNotifications: Notification[] = [
-        {
-          id: '1',
-          type: 'document_processed',
-          title: 'Documento Procesado',
-          message: 'Nueva factura procesada exitosamente con 3 facturas detectadas',
-          timestamp: new Date().toISOString(),
-          read: false,
-          data: { documentId: '01cf534e-540b-4889-8763-dc54ca21b752' }
-        },
-        {
-          id: '2',
-          type: 'supplier_created',
-          title: 'Nuevo Proveedor',
-          message: 'Proveedor "Tecnología Avanzada S.L." creado automáticamente',
-          timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-          read: false,
-          data: { supplierId: 'sup_001' }
-        },
-        {
-          id: '3',
-          type: 'customer_created',
-          title: 'Nuevo Cliente',
-          message: 'Cliente "Empresa Receptora ABC" creado automáticamente',
-          timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-          read: true,
-          data: { customerId: 'cust_001' }
-        }
-      ];
-
-      setNotifications(mockNotifications);
-      setUnreadCount(mockNotifications.filter(n => !n.read).length);
-    };
-
-    createMockNotifications();
-
-    // Simular nuevas notificaciones cada 30 segundos
-    const interval = setInterval(() => {
-      const newNotification: Notification = {
-        id: Date.now().toString(),
-        type: Math.random() > 0.5 ? 'supplier_created' : 'customer_created',
-        title: Math.random() > 0.5 ? 'Nuevo Proveedor' : 'Nuevo Cliente',
-        message: `Entidad comercial detectada automáticamente en documento reciente`,
-        timestamp: new Date().toISOString(),
-        read: false,
-        data: {}
-      };
-
-      setNotifications(prev => [newNotification, ...prev.slice(0, 9)]);
-      setUnreadCount(prev => prev + 1);
-    }, 30000); // Cada 30 segundos
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const markAsRead = (notificationId: string) => {
-    setNotifications(prev => 
-      prev.map(n => 
-        n.id === notificationId ? { ...n, read: true } : n
-      )
-    );
-    setUnreadCount(prev => Math.max(0, prev - 1));
-  };
-
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    setUnreadCount(0);
-  };
-
-  const removeNotification = (notificationId: string) => {
-    const notification = notifications.find(n => n.id === notificationId);
-    if (notification && !notification.read) {
-      setUnreadCount(prev => Math.max(0, prev - 1));
+    if (showPanel) {
+      refresh();
     }
-    setNotifications(prev => prev.filter(n => n.id !== notificationId));
+  }, [showPanel, refresh]);
+
+  const handleMarkAsRead = async (notificationId: string) => {
+    await markAsRead([notificationId]);
   };
 
-  const getNotificationIcon = (type: Notification['type']) => {
+  const handleMarkAllAsRead = async () => {
+    await markAllAsRead();
+  };
+
+  const handleRemoveNotification = async (notificationId: string) => {
+    await deleteNotification(notificationId);
+  };
+
+  const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'supplier_created':
         return <Building2 className="h-4 w-4 text-blue-600" />;
       case 'customer_created':
         return <Users className="h-4 w-4 text-green-600" />;
+      case 'document_uploaded':
+        return <FileText className="h-4 w-4 text-blue-500" />;
       case 'document_processed':
-        return <FileText className="h-4 w-4 text-purple-600" />;
-      case 'error':
-        return <AlertCircle className="h-4 w-4 text-red-600" />;
+        return <FileCheck className="h-4 w-4 text-green-600" />;
+      case 'document_error':
+        return <FileX className="h-4 w-4 text-red-600" />;
+      case 'document_shared':
+        return <Share2 className="h-4 w-4 text-purple-600" />;
+      case 'export_completed':
+        return <Download className="h-4 w-4 text-indigo-600" />;
+      case 'entity_updated':
+        return <Package className="h-4 w-4 text-orange-600" />;
       default:
         return <Bell className="h-4 w-4" />;
     }
@@ -138,6 +81,15 @@ export function NotificationsSystem({ className }: NotificationsSystemProps) {
     if (diffInMinutes < 60) return `Hace ${diffInMinutes} min`;
     if (diffInMinutes < 1440) return `Hace ${Math.floor(diffInMinutes / 60)} horas`;
     return `Hace ${Math.floor(diffInMinutes / 1440)} días`;
+  };
+
+  const handleNotificationClick = (notification: any) => {
+    handleMarkAsRead(notification.id);
+    
+    // Navegar según el tipo de notificación
+    if (notification.metadata?.link) {
+      window.location.href = notification.metadata.link;
+    }
   };
 
   return (
@@ -171,7 +123,7 @@ export function NotificationsSystem({ className }: NotificationsSystemProps) {
                   <Button 
                     size="sm" 
                     variant="ghost" 
-                    onClick={markAllAsRead}
+                    onClick={handleMarkAllAsRead}
                     className="text-xs"
                   >
                     Marcar todas como leídas
@@ -205,7 +157,7 @@ export function NotificationsSystem({ className }: NotificationsSystemProps) {
                       className={`p-3 border-b last:border-b-0 hover:bg-gray-50 cursor-pointer transition-colors ${
                         !notification.read ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
                       }`}
-                      onClick={() => markAsRead(notification.id)}
+                      onClick={() => handleNotificationClick(notification)}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex items-start gap-3 flex-1">
@@ -227,7 +179,7 @@ export function NotificationsSystem({ className }: NotificationsSystemProps) {
                             <div className="flex items-center gap-1 mt-1">
                               <Clock className="h-3 w-3 text-gray-400" />
                               <span className="text-xs text-gray-400">
-                                {formatTimeAgo(notification.timestamp)}
+                                {formatTimeAgo(notification.created_at)}
                               </span>
                             </div>
                           </div>
@@ -237,7 +189,7 @@ export function NotificationsSystem({ className }: NotificationsSystemProps) {
                           variant="ghost"
                           onClick={(e) => {
                             e.stopPropagation();
-                            removeNotification(notification.id);
+                            handleRemoveNotification(notification.id);
                           }}
                           className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
                         >

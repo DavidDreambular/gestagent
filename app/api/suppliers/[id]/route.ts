@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { PostgreSQLClient } from '@/lib/postgresql-client';
+import { dbAdapter } from '@/lib/db-adapter';
 
 // Inicializar cliente PostgreSQL
 const pgClient = new PostgreSQLClient();
@@ -71,20 +72,24 @@ export async function GET(
 
     const supplier = supplierResult.data[0];
 
-    // Obtener documentos relacionados
+    // Obtener documentos relacionados a través de invoice_entities
     const documentsQuery = `
-      SELECT 
-        job_id,
-        document_type,
-        status,
-        upload_timestamp,
-        document_date,
-        total_amount,
-        emitter_name,
-        receiver_name
-      FROM documents 
-      WHERE supplier_id = $1
-      ORDER BY upload_timestamp DESC
+      SELECT DISTINCT
+        d.job_id,
+        d.document_type,
+        d.status,
+        d.upload_timestamp,
+        d.document_date,
+        d.total_amount,
+        d.emitter_name,
+        d.receiver_name,
+        ie.invoice_number,
+        ie.invoice_date,
+        ie.total_amount as invoice_amount
+      FROM documents d
+      LEFT JOIN invoice_entities ie ON d.job_id = ie.document_id
+      WHERE d.supplier_id = $1 OR ie.supplier_id = $1
+      ORDER BY d.upload_timestamp DESC
       LIMIT 50
     `;
 
@@ -260,30 +265,35 @@ export async function DELETE(
     const { id } = params;
 
     console.log(`🗑️ [Supplier Delete] Eliminando proveedor: ${id}`);
-
-    // Verificar si hay documentos relacionados
-    const documentsQuery = `
-      SELECT job_id FROM documents 
-      WHERE supplier_id = $1 
-      LIMIT 1
-    `;
     
-    const documentsResult = await pgClient.query(documentsQuery, [id]);
-    const relatedDocuments = documentsResult.data || [];
+    // Verificar que el ID sea válido
+    if (!id || id === 'undefined') {
+      console.log(`❌ [Supplier Delete] ID inválido: ${id}`);
+      return NextResponse.json(
+        { error: 'ID de proveedor inválido' },
+        { status: 400 }
+      );
+    }
+
+    // Verificar si hay documentos relacionados usando dbAdapter
+    const documentsResult = await dbAdapter.query(
+      'SELECT job_id FROM documents WHERE supplier_id = $1 LIMIT 1',
+      [id]
+    );
+    const relatedDocuments = documentsResult.rows || [];
 
     // Si hay documentos relacionados, hacer soft delete
     if (relatedDocuments && relatedDocuments.length > 0) {
-      const softDeleteQuery = `
-        UPDATE suppliers SET
+      const softDeleteResult = await dbAdapter.query(
+        `UPDATE suppliers SET
           status = 'inactive',
-          updated_at = NOW()
+          updated_at = CURRENT_TIMESTAMP
         WHERE supplier_id = $1
-        RETURNING *
-      `;
+        RETURNING *`,
+        [id]
+      );
 
-      const softDeleteResult = await pgClient.query<Supplier>(softDeleteQuery, [id]);
-
-      if (softDeleteResult.error || !softDeleteResult.data || softDeleteResult.data.length === 0) {
+      if (!softDeleteResult.rows || softDeleteResult.rows.length === 0) {
         return NextResponse.json(
           { error: 'Proveedor no encontrado' },
           { status: 404 }
@@ -300,15 +310,12 @@ export async function DELETE(
     }
 
     // Si no hay documentos relacionados, eliminar completamente
-    const deleteQuery = `
-      DELETE FROM suppliers 
-      WHERE supplier_id = $1
-      RETURNING *
-    `;
+    const deleteResult = await dbAdapter.query(
+      'DELETE FROM suppliers WHERE supplier_id = $1 RETURNING *',
+      [id]
+    );
 
-    const deleteResult = await pgClient.query<Supplier>(deleteQuery, [id]);
-
-    if (deleteResult.error || !deleteResult.data || deleteResult.data.length === 0) {
+    if (!deleteResult.rows || deleteResult.rows.length === 0) {
       return NextResponse.json(
         { error: 'Proveedor no encontrado' },
         { status: 404 }

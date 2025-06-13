@@ -26,6 +26,7 @@ import {
   Eye
 } from 'lucide-react';
 import Link from 'next/link';
+import { InvoiceHistory } from '@/components/entities/InvoiceHistory';
 
 interface Customer {
   customer_id: string;
@@ -407,88 +408,11 @@ export default function CustomerProfilePage() {
 
         {/* Pestaña: Documentos */}
         <TabsContent value="documents" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Documentos Relacionados</CardTitle>
-                <div className="flex items-center space-x-2">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Buscar documentos..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10 w-64"
-                    />
-                  </div>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {filteredDocuments.length > 0 ? (
-                <div className="space-y-4">
-                  {filteredDocuments.map((doc) => (
-                    <Card key={doc.job_id} className="border-l-4 border-l-blue-500">
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-1">
-                            <div className="flex items-center space-x-2">
-                              <FileText className="h-4 w-4 text-blue-600" />
-                              <Link 
-                                href={`/dashboard/documents/${doc.job_id}`}
-                                className="font-medium hover:underline"
-                              >
-                                {doc.job_id}
-                              </Link>
-                              <Badge variant="outline">{doc.document_type}</Badge>
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              <span>Emisor: {doc.emitter_name}</span>
-                              <span className="mx-2">•</span>
-                              <span>Receptor: {doc.receiver_name}</span>
-                              {doc.total_amount && (
-                                <>
-                                  <span className="mx-2">•</span>
-                                  <span>€{doc.total_amount.toLocaleString()}</span>
-                                </>
-                              )}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              Fecha: {new Date(doc.document_date).toLocaleDateString()} • 
-                              Subido: {new Date(doc.upload_timestamp).toLocaleDateString()}
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-3">
-                            {getStatusBadge(doc.status)}
-                            <Button variant="outline" size="sm" asChild>
-                              <Link href={`/dashboard/documents/${doc.job_id}`}>
-                                <Eye className="h-4 w-4 mr-1" />
-                                Ver
-                              </Link>
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDeleteDocument(doc.job_id)}
-                              className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              <span className="hidden sm:inline">Eliminar</span>
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">No hay documentos relacionados con este cliente</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <InvoiceHistory
+            entityType="customer"
+            entityId={customer.customer_id}
+            entityName={customer.name}
+          />
         </TabsContent>
 
         {/* Pestaña: Análisis */}

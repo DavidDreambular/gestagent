@@ -5,8 +5,9 @@ import { memoryDB } from './memory-db';
 // Verificar si PostgreSQL está disponible
 const isPostgreSQLAvailable = async (): Promise<boolean> => {
   if (!process.env.DATABASE_URL) {
-    console.log('⚠️ DATABASE_URL no configurado, usando base de datos en memoria');
-    return false;
+    console.log('⚠️ DATABASE_URL no configurado, pero forzando PostgreSQL');
+    // Forzar PostgreSQL incluso sin DATABASE_URL configurado
+    return true;
   }
 
   try {
@@ -21,8 +22,9 @@ const isPostgreSQLAvailable = async (): Promise<boolean> => {
     console.log('✅ PostgreSQL disponible');
     return true;
   } catch (error) {
-    console.log('⚠️ PostgreSQL no disponible, usando base de datos en memoria');
-    return false;
+    console.log('⚠️ PostgreSQL falló, pero forzando uso de PostgreSQL (no fallback a memoria)');
+    // Siempre retornar true para forzar PostgreSQL
+    return true;
   }
 };
 
@@ -61,18 +63,28 @@ export class DatabaseAdapter {
   }
 
   async query(text: string, params?: any[]): Promise<any> {
-    if (this.usePostgreSQL && this.pool) {
-      try {
-        const result = await this.pool.query(text, params);
-        return result;
-      } catch (error) {
-        console.error('Error en PostgreSQL, fallback a memoria:', error);
-        this.usePostgreSQL = false;
+    // Forzar siempre PostgreSQL - sin fallback a memoria
+    if (!this.pool) {
+      // Inicializar pool si no existe
+      if (process.env.DATABASE_URL) {
+        this.pool = new Pool({
+          connectionString: process.env.DATABASE_URL,
+          max: 20,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 2000,
+        });
+      } else {
+        throw new Error('PostgreSQL no configurado: DATABASE_URL requerido');
       }
     }
 
-    // Fallback a base de datos en memoria
-    return this.queryMemoryDB(text, params);
+    try {
+      const result = await this.pool.query(text, params);
+      return result;
+    } catch (error) {
+      console.error('Error en PostgreSQL:', error);
+      throw error; // Propagar el error en lugar de hacer fallback
+    }
   }
 
   private async queryMemoryDB(text: string, params?: any[]): Promise<any> {

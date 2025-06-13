@@ -2,7 +2,7 @@
 // /app/api/notifications/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { memoryDB } from '@/lib/memory-db';
+import { unifiedNotificationService } from '@/lib/services/unified-notification.service';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
@@ -30,30 +30,20 @@ export async function GET(request: NextRequest) {
     
     console.log(`🔍 [API Notifications] Filtros: limit=${limit}, unreadOnly=${unreadOnly}`);
     
-    // Obtener notificaciones del usuario
-    const allNotifications = await memoryDB.getNotificationsByUserId(userId);
+    // Obtener notificaciones del usuario desde PostgreSQL
+    const notifications = await unifiedNotificationService.getUserNotifications(userId, { limit, unreadOnly });
     
-    // Filtrar notificaciones
-    let filteredNotifications = allNotifications;
+    // Obtener contador de no leídas
+    const unreadCount = await unifiedNotificationService.getUnreadCount(userId);
     
-    if (unreadOnly) {
-      filteredNotifications = filteredNotifications.filter(n => !n.read);
-    }
-    
-    // Aplicar límite
-    filteredNotifications = filteredNotifications.slice(0, limit);
-    
-    // Calcular no leídas
-    const unreadCount = allNotifications.filter(n => !n.read).length;
-    
-    console.log(`✅ [API Notifications] Retornando ${filteredNotifications.length} notificaciones, ${unreadCount} no leídas`);
+    console.log(`✅ [API Notifications] Retornando ${notifications.length} notificaciones, ${unreadCount} no leídas`);
     
     return NextResponse.json({
       success: true,
-      notifications: filteredNotifications,
+      notifications,
       unreadCount,
-      total: filteredNotifications.length,
-      source: 'memory_db'
+      total: notifications.length,
+      source: 'postgresql'
     });
     
   } catch (error: any) {
@@ -86,7 +76,7 @@ export async function POST(request: NextRequest) {
     console.log('📨 [API Notifications] Creando notificación para usuario:', userId);
     
     const body = await request.json();
-    const { type, title, message, data, targetUserId } = body;
+    const { type, title, message, metadata, targetUserId } = body;
     
     if (!type || !title) {
       return NextResponse.json(
@@ -102,20 +92,30 @@ export async function POST(request: NextRequest) {
     const notificationUserId = targetUserId && session?.user?.role?.includes('admin') ? targetUserId : userId;
     
     // Crear notificación
-    const newNotification = await memoryDB.createNotification({
+    const notificationId = await unifiedNotificationService.send({
       user_id: notificationUserId,
       type,
       title,
       message: message || '',
-      data: data || {}
+      metadata: metadata || {}
     });
     
-    console.log('✅ [API Notifications] Notificación creada:', newNotification.id);
+    if (!notificationId) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Error al crear notificación' 
+        },
+        { status: 500 }
+      );
+    }
+    
+    console.log('✅ [API Notifications] Notificación creada:', notificationId);
     
     return NextResponse.json({
       success: true,
-      notificationId: newNotification.id,
-      notification: newNotification
+      notificationId,
+      message: 'Notificación creada exitosamente'
     });
     
   } catch (error: any) {
@@ -150,38 +150,25 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { notificationIds, markAll } = body;
     
+    let updatedCount = 0;
+    
     if (markAll) {
       // Marcar todas las notificaciones del usuario como leídas
-      const userNotifications = await memoryDB.getNotificationsByUserId(userId);
-      const unreadNotifications = userNotifications.filter(n => !n.read);
+      const success = await unifiedNotificationService.markAllAsRead(userId);
       
-      let updatedCount = 0;
-      for (const notification of unreadNotifications) {
-        const success = await memoryDB.markNotificationAsRead(notification.id);
-        if (success) updatedCount++;
-      }
-      
-      console.log(`✅ [API Notifications] Marcadas ${updatedCount} notificaciones como leídas`);
+      console.log(`✅ [API Notifications] Todas marcadas como leídas: ${success}`);
       
       return NextResponse.json({
         success: true,
         message: 'Todas las notificaciones marcadas como leídas',
-        updated: updatedCount
+        updated: success ? 1 : 0
       });
       
     } else if (notificationIds && Array.isArray(notificationIds)) {
       // Marcar notificaciones específicas como leídas
-      let updatedCount = 0;
-      
-      for (const notificationId of notificationIds) {
-        // Verificar que la notificación pertenece al usuario
-        const userNotifications = await memoryDB.getNotificationsByUserId(userId);
-        const notification = userNotifications.find(n => n.id === notificationId);
-        
-        if (notification && !notification.read) {
-          const success = await memoryDB.markNotificationAsRead(notificationId);
-          if (success) updatedCount++;
-        }
+      for (const notId of notificationIds) {
+        await unifiedNotificationService.markAsRead(notId);
+        updatedCount++;
       }
       
       console.log(`✅ [API Notifications] Marcadas ${updatedCount} notificaciones específicas como leídas`);
@@ -244,11 +231,10 @@ export async function DELETE(request: NextRequest) {
       );
     }
     
-    // Verificar que la notificación pertenece al usuario
-    const userNotifications = await memoryDB.getNotificationsByUserId(userId);
-    const notification = userNotifications.find(n => n.id === notificationId);
+    // Eliminar notificación (soft delete)
+    const success = await unifiedNotificationService.deleteNotification(notificationId);
     
-    if (!notification) {
+    if (!success) {
       return NextResponse.json(
         { 
           success: false,
@@ -258,11 +244,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
     
-    // Por ahora solo marcamos como leída en lugar de eliminar
-    // Podrías agregar un método deleteNotification en memoryDB si lo necesitas
-    await memoryDB.markNotificationAsRead(notificationId);
-    
-    console.log(`✅ [API Notifications] Notificación ${notificationId} marcada como procesada`);
+    console.log(`✅ [API Notifications] Notificación ${notificationId} eliminada`);
     
     return NextResponse.json({
       success: true,

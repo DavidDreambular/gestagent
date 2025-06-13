@@ -37,40 +37,10 @@ interface NotificationContextType {
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
-// Datos mock temporales
-const mockNotifications: Notification[] = [
-  {
-    id: '1',
-    user_id: 'mock-user',
-    type: 'document_processed',
-    title: 'Documento procesado',
-    message: 'Tu factura ha sido procesada exitosamente con Mistral AI',
-    read: false,
-    created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString()
-  },
-  {
-    id: '2',
-    user_id: 'mock-user',
-    type: 'document_uploaded',
-    title: 'Documento subido',
-    message: 'Se ha subido un nuevo documento PDF',
-    read: false,
-    created_at: new Date(Date.now() - 15 * 60 * 1000).toISOString()
-  },
-  {
-    id: '3',
-    user_id: 'mock-user',
-    type: 'system_update',
-    title: 'Migración completada',
-    message: 'Sistema migrado exitosamente de Supabase a PostgreSQL',
-    read: true,
-    read_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-    created_at: new Date(Date.now() - 60 * 60 * 1000).toISOString()
-  }
-];
+// Las notificaciones se cargarán desde la API en tiempo real
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
@@ -84,13 +54,20 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const loadNotifications = useCallback(async () => {
     setLoading(true);
     
-    // Simular carga asíncrona
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    setNotifications(mockNotifications);
-    setLoading(false);
-    
-    console.log('🔔 [NOTIFICATIONS] Notificaciones mock cargadas');
+    try {
+      const response = await fetch('/api/notifications');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.notifications) {
+          setNotifications(data.notifications);
+          console.log('🔔 [NOTIFICATIONS] Notificaciones cargadas desde la API');
+        }
+      }
+    } catch (error) {
+      console.error('❌ [NOTIFICATIONS] Error cargando notificaciones:', error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   // Función para marcar como leídas
@@ -99,38 +76,85 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     console.log('🔔 [NOTIFICATIONS] Marcando como leídas:', notificationIds);
 
-    // Actualizar estado local
-    setNotifications(prev => 
-      prev.map(n => 
-        notificationIds.includes(n.id) 
-          ? { ...n, read: true, read_at: new Date().toISOString() }
-          : n
-      )
-    );
-    
-    toast.success(`${notificationIds.length} notificación(es) marcada(s) como leída(s)`);
+    try {
+      const response = await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ notificationIds }),
+      });
+
+      if (response.ok) {
+        // Actualizar estado local solo si la API responde correctamente
+        setNotifications(prev => 
+          prev.map(n => 
+            notificationIds.includes(n.id) 
+              ? { ...n, read: true, read_at: new Date().toISOString() }
+              : n
+          )
+        );
+        
+        toast.success(`${notificationIds.length} notificación(es) marcada(s) como leída(s)`);
+      } else {
+        toast.error('Error al marcar notificaciones como leídas');
+      }
+    } catch (error) {
+      console.error('❌ [NOTIFICATIONS] Error marcando como leídas:', error);
+      toast.error('Error de conexión');
+    }
   }, []);
 
   // Función para marcar todas como leídas
   const markAllAsRead = useCallback(async () => {
     console.log('🔔 [NOTIFICATIONS] Marcando todas como leídas');
 
-    // Actualizar estado local
-    setNotifications(prev => 
-      prev.map(n => ({ ...n, read: true, read_at: new Date().toISOString() }))
-    );
-    
-    toast.success('Todas las notificaciones marcadas como leídas');
+    try {
+      const response = await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ markAll: true }),
+      });
+
+      if (response.ok) {
+        // Actualizar estado local
+        setNotifications(prev => 
+          prev.map(n => ({ ...n, read: true, read_at: new Date().toISOString() }))
+        );
+        
+        toast.success('Todas las notificaciones marcadas como leídas');
+      } else {
+        toast.error('Error al marcar todas las notificaciones');
+      }
+    } catch (error) {
+      console.error('❌ [NOTIFICATIONS] Error marcando todas como leídas:', error);
+      toast.error('Error de conexión');
+    }
   }, []);
 
   // Función para eliminar notificación
   const deleteNotification = useCallback(async (notificationId: string) => {
     console.log('🔔 [NOTIFICATIONS] Eliminando notificación:', notificationId);
 
-    // Actualizar estado local
-    setNotifications(prev => prev.filter(n => n.id !== notificationId));
-    
-    toast.success('Notificación eliminada');
+    try {
+      const response = await fetch(`/api/notifications?id=${notificationId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        // Actualizar estado local
+        setNotifications(prev => prev.filter(n => n.id !== notificationId));
+        
+        toast.success('Notificación eliminada');
+      } else {
+        toast.error('Error al eliminar notificación');
+      }
+    } catch (error) {
+      console.error('❌ [NOTIFICATIONS] Error eliminando notificación:', error);
+      toast.error('Error de conexión');
+    }
   }, []);
 
   // Función para refrescar notificaciones

@@ -81,6 +81,11 @@
 - API Key: Mistral AI
 ```
 
+### **Configuración de Puertos**
+El sistema utiliza los siguientes puertos:
+- **Aplicación (Frontend + Backend)**: Puerto 2200
+- **Base de datos PostgreSQL**: Puerto 5432 (estándar)
+
 ### **1. Clonar el Repositorio**
 ```bash
 git clone https://github.com/tu-usuario/gestagent.git

@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { PostgreSQLClient } from '@/lib/postgresql-client';
+import { dbAdapter } from '@/lib/db-adapter';
 
 // Inicializar cliente PostgreSQL
 const pgClient = new PostgreSQLClient();
@@ -52,6 +53,25 @@ export async function GET(
 
     console.log(`🔍 [Customer Detail] Obteniendo cliente: ${id}`);
 
+    // Validar que el ID sea válido
+    if (!id || id === 'undefined' || id === 'null') {
+      console.error(`❌ [Customer Detail] ID inválido recibido: ${id}`);
+      return NextResponse.json(
+        { error: 'ID de cliente inválido' },
+        { status: 400 }
+      );
+    }
+
+    // Validar formato UUID si es necesario
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      console.error(`❌ [Customer Detail] ID no es un UUID válido: ${id}`);
+      return NextResponse.json(
+        { error: 'Formato de ID inválido' },
+        { status: 400 }
+      );
+    }
+
     // Obtener datos del cliente
     const customerQuery = `
       SELECT * FROM customers 
@@ -70,20 +90,24 @@ export async function GET(
 
     const customer = customerResult.data[0];
 
-    // Obtener documentos relacionados
+    // Obtener documentos relacionados a través de invoice_entities
     const documentsQuery = `
-      SELECT 
-        job_id,
-        document_type,
-        status,
-        upload_timestamp,
-        document_date,
-        total_amount,
-        emitter_name,
-        receiver_name
-      FROM documents 
-      WHERE customer_id = $1
-      ORDER BY upload_timestamp DESC
+      SELECT DISTINCT
+        d.job_id,
+        d.document_type,
+        d.status,
+        d.upload_timestamp,
+        d.document_date,
+        d.total_amount,
+        d.emitter_name,
+        d.receiver_name,
+        ie.invoice_number,
+        ie.invoice_date,
+        ie.total_amount as invoice_amount
+      FROM documents d
+      LEFT JOIN invoice_entities ie ON d.job_id = ie.document_id
+      WHERE d.customer_id = $1 OR ie.customer_id = $1
+      ORDER BY d.upload_timestamp DESC
       LIMIT 50
     `;
 
@@ -257,30 +281,35 @@ export async function DELETE(
     const { id } = params;
 
     console.log(`🗑️ [Customer Delete] Eliminando cliente: ${id}`);
-
-    // Verificar si hay documentos relacionados
-    const documentsQuery = `
-      SELECT job_id FROM documents 
-      WHERE customer_id = $1 
-      LIMIT 1
-    `;
     
-    const documentsResult = await pgClient.query(documentsQuery, [id]);
-    const relatedDocuments = documentsResult.data || [];
+    // Verificar que el ID sea válido
+    if (!id || id === 'undefined') {
+      console.log(`❌ [Customer Delete] ID inválido: ${id}`);
+      return NextResponse.json(
+        { error: 'ID de cliente inválido' },
+        { status: 400 }
+      );
+    }
+
+    // Verificar si hay documentos relacionados usando dbAdapter
+    const documentsResult = await dbAdapter.query(
+      'SELECT job_id FROM documents WHERE customer_id = $1 LIMIT 1',
+      [id]
+    );
+    const relatedDocuments = documentsResult.rows || [];
 
     // Si hay documentos relacionados, hacer soft delete
     if (relatedDocuments && relatedDocuments.length > 0) {
-      const softDeleteQuery = `
-        UPDATE customers SET
+      const softDeleteResult = await dbAdapter.query(
+        `UPDATE customers SET
           status = 'inactive',
-          updated_at = NOW()
+          updated_at = CURRENT_TIMESTAMP
         WHERE customer_id = $1
-        RETURNING *
-      `;
+        RETURNING *`,
+        [id]
+      );
 
-      const softDeleteResult = await pgClient.query<Customer>(softDeleteQuery, [id]);
-
-      if (softDeleteResult.error || !softDeleteResult.data || softDeleteResult.data.length === 0) {
+      if (!softDeleteResult.rows || softDeleteResult.rows.length === 0) {
         return NextResponse.json(
           { error: 'Cliente no encontrado' },
           { status: 404 }
@@ -297,15 +326,12 @@ export async function DELETE(
     }
 
     // Si no hay documentos relacionados, eliminar completamente
-    const deleteQuery = `
-      DELETE FROM customers 
-      WHERE customer_id = $1
-      RETURNING *
-    `;
+    const deleteResult = await dbAdapter.query(
+      'DELETE FROM customers WHERE customer_id = $1 RETURNING *',
+      [id]
+    );
 
-    const deleteResult = await pgClient.query<Customer>(deleteQuery, [id]);
-
-    if (deleteResult.error || !deleteResult.data || deleteResult.data.length === 0) {
+    if (!deleteResult.rows || deleteResult.rows.length === 0) {
       return NextResponse.json(
         { error: 'Cliente no encontrado' },
         { status: 404 }
