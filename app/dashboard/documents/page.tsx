@@ -41,6 +41,7 @@ export default function DocumentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
   const [isSelectMode, setIsSelectMode] = useState(false);
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -162,23 +163,64 @@ export default function DocumentsPage() {
 
   const handleBulkDelete = async () => {
     if (selectedDocuments.length === 0) return;
-    
-    if (!confirm(`¿Estás seguro de que quieres eliminar ${selectedDocuments.length} documentos?`)) {
-      return;
-    }
 
+    const selectedDocumentNames = selectedDocuments.map(id => {
+      const doc = documents.find(d => d.job_id === id);
+      return doc?.emitter_name || doc?.job_id || id;
+    }).join(', ');
+
+    let confirmMessage = `¿Estás seguro de que quieres eliminar ${selectedDocuments.length} documentos?\n\n${selectedDocumentNames}`;
+    confirmMessage += '\n\n⚠️ Esta acción eliminará los documentos de la base de datos pero mantendrá los archivos físicos.';
+    confirmMessage += '\n\nPara eliminar también los archivos, confirma en el siguiente diálogo.';
+
+    if (!confirm(confirmMessage)) return;
+
+    const deleteFiles = confirm('¿Deseas eliminar también los archivos físicos PDF?\n\n⚠️ ADVERTENCIA: Esta acción no se puede deshacer.');
+
+    setBulkDeleteLoading(true);
     try {
-      for (const docId of selectedDocuments) {
-        await fetch(`/api/documents/${docId}`, { method: 'DELETE' });
+      const response = await fetch('/api/documents/bulk-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          document_ids: selectedDocuments,
+          delete_files: deleteFiles,
+          hard_delete: false // Borrado lógico por defecto
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        const { results } = result;
+        let message = `✅ Operación completada:\n`;
+        message += `- ${results.deleted_count} documentos eliminados\n`;
+        if (results.files_deleted_count > 0) {
+          message += `- ${results.files_deleted_count} archivos físicos eliminados\n`;
+        }
+        if (results.error_count > 0) {
+          message += `- ${results.error_count} errores\n`;
+        }
+        if (results.warning_count > 0) {
+          message += `- ${results.warning_count} advertencias`;
+        }
+
+        alert(message);
+        
+        // Limpiar selección y recargar
+        setSelectedDocuments([]);
+        setIsSelectMode(false);
+        fetchDocuments();
+      } else {
+        alert(`❌ Error: ${result.error}`);
       }
-      
-      setDocuments(documents.filter(doc => !selectedDocuments.includes(doc.job_id)));
-      setSelectedDocuments([]);
-      setIsSelectMode(false);
-      alert(`${selectedDocuments.length} documentos eliminados exitosamente`);
     } catch (error) {
       console.error('Error in bulk delete:', error);
-      alert('Error al eliminar documentos');
+      alert('❌ Error de conexión al eliminar documentos');
+    } finally {
+      setBulkDeleteLoading(false);
     }
   };
 
@@ -279,7 +321,7 @@ export default function DocumentsPage() {
             <Layers className="h-4 w-4" />
             Procesamiento Masivo
           </Button>
-          <Button onClick={handleNewDocument} className="gap-2">
+          <Button onClick={handleNewDocument} className="gap-2 hover-lift">
             <Upload className="h-4 w-4" />
             Nuevo Documento
           </Button>
@@ -287,49 +329,49 @@ export default function DocumentsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+        <Card className="hover-lift">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Documentos</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summaryStats.total}</div>
+            <div className="text-2xl font-bold number-transition">{summaryStats.total}</div>
             <p className="text-xs text-muted-foreground">
               Documentos procesados
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="hover-lift">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Completados</CardTitle>
             <CheckSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summaryStats.completed}</div>
+            <div className="text-2xl font-bold number-transition">{summaryStats.completed}</div>
             <p className="text-xs text-muted-foreground">
               Estado completado
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="hover-lift">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Procesando</CardTitle>
             <AlertCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summaryStats.processing}</div>
+            <div className="text-2xl font-bold number-transition">{summaryStats.processing}</div>
             <p className="text-xs text-muted-foreground">
               En proceso
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="hover-lift">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Errores</CardTitle>
-            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+            <AlertCircle className="h-4 w-4 text-muted-foreground pulse-dot" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summaryStats.error}</div>
+            <div className="text-2xl font-bold number-transition">{summaryStats.error}</div>
             <p className="text-xs text-muted-foreground">
               Con errores
             </p>
@@ -347,7 +389,7 @@ export default function DocumentsPage() {
                   placeholder="Buscar por emisor, receptor, tipo o ID..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 focus-ring"
                 />
               </div>
             </div>
@@ -453,7 +495,7 @@ export default function DocumentsPage() {
           ) : (
             <div className="space-y-3">
               {filteredDocuments.map((doc) => (
-                <Card key={doc.job_id} className="hover:shadow-md transition-shadow">
+                <Card key={doc.job_id} className="hover-lift fade-in transition-all duration-300">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4 flex-1">

@@ -155,9 +155,9 @@ export default function PortalUpload() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen relative z-10">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b">
+      <header className="glass-card border-b border-white/20 fade-in">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
@@ -180,7 +180,7 @@ export default function PortalUpload() {
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {uploadSuccess ? (
-          <Card className="max-w-md mx-auto">
+          <Card className="max-w-md mx-auto glass-card fade-in">
             <CardContent className="pt-6">
               <div className="text-center">
                 <CheckCircle className="mx-auto h-12 w-12 text-green-600 mb-4" />
@@ -211,7 +211,7 @@ export default function PortalUpload() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Formulario */}
-            <Card>
+            <Card className="glass-card hover-lift fade-in" style={{animationDelay: '0.1s'}}>
               <CardHeader>
                 <CardTitle>Información del Documento</CardTitle>
                 <CardDescription>
@@ -242,6 +242,7 @@ export default function PortalUpload() {
                     value={documentNumber}
                     onChange={(e) => setDocumentNumber(e.target.value)}
                     placeholder="Ej: FAC-2024-001"
+                    className="focus-ring"
                     required
                   />
                 </div>
@@ -253,6 +254,7 @@ export default function PortalUpload() {
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Descripción adicional del documento..."
+                    className="focus-ring"
                     rows={3}
                   />
                 </div>
@@ -268,7 +270,7 @@ export default function PortalUpload() {
             </Card>
 
             {/* Upload Area */}
-            <Card>
+            <Card className="glass-card hover-lift fade-in" style={{animationDelay: '0.2s'}}>
               <CardHeader>
                 <CardTitle>Archivo PDF</CardTitle>
                 <CardDescription>
@@ -338,7 +340,7 @@ export default function PortalUpload() {
                   <Button
                     onClick={handleUpload}
                     disabled={!selectedFile || uploading || !documentNumber.trim()}
-                    className="w-full"
+                    className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-all duration-300 hover-lift ripple"
                   >
                     {uploading ? (
                       <>
@@ -356,7 +358,7 @@ export default function PortalUpload() {
                   <Button
                     variant="outline"
                     onClick={() => router.push('/portal/dashboard')}
-                    className="w-full"
+                    className="w-full hover-lift transition-all duration-200"
                   >
                     Cancelar
                   </Button>

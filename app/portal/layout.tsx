@@ -17,18 +17,22 @@ export default function PortalLayout({
   return (
     <html lang="es">
       <body className={inter.className}>
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
-          <header className="bg-white shadow-sm border-b border-gray-200">
+        <div className="min-h-screen animated-gradient mesh-gradient">
+          <header className="glass-card border-b border-white/20 relative z-10">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between items-center h-16">
                 <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <h1 className="text-xl font-bold text-gray-900">
-                      GestAgent
-                    </h1>
-                    <p className="text-xs text-gray-600">
-                      Portal de Proveedores
-                    </p>
+                  <div className="flex items-center space-x-3">
+                    <img
+                      src="/images/gestagent-logo-full.png"
+                      alt="GestAgent Logo"
+                      className="h-8 object-contain"
+                    />
+                    <div>
+                      <p className="text-xs text-gray-600">
+                        Portal de Proveedores
+                      </p>
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center space-x-4">
@@ -44,7 +48,7 @@ export default function PortalLayout({
             {children}
           </main>
 
-          <footer className="bg-white border-t border-gray-200 mt-auto">
+          <footer className="glass-card border-t border-white/20 mt-auto relative z-10">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
               <div className="text-center text-sm text-gray-600">
                 © 2024 GestAgent. Portal de Proveedores.

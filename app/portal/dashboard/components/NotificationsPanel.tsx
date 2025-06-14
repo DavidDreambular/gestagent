@@ -157,11 +157,11 @@ export function NotificationsPanel({ supplierId, compact = false }: Notification
       <div className="relative">
         <button
           onClick={() => setShowPanel(!showPanel)}
-          className="relative p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full"
+          className="relative p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 rounded-full transition-all duration-200 hover:scale-110"
         >
           <Bell className="w-6 h-6" />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center pulse-dot">
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           )}
@@ -173,7 +173,7 @@ export function NotificationsPanel({ supplierId, compact = false }: Notification
               className="fixed inset-0 z-10" 
               onClick={() => setShowPanel(false)}
             />
-            <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-20 max-h-96 overflow-hidden">
+            <div className="absolute right-0 mt-2 w-80 glass-card rounded-lg border border-white/20 z-20 max-h-96 overflow-hidden fade-in">
               <div className="p-4 border-b border-gray-200 flex items-center justify-between">
                 <h3 className="font-semibold text-gray-900">Notificaciones</h3>
                 <div className="flex items-center space-x-2">
@@ -204,7 +204,7 @@ export function NotificationsPanel({ supplierId, compact = false }: Notification
                     No hay notificaciones
                   </div>
                 ) : (
-                  notifications.slice(0, 5).map((notification) => (
+                  notifications.slice(0, 5).map((notification, index) => (
                     <NotificationItem
                       key={notification.id}
                       notification={notification}
@@ -212,6 +212,7 @@ export function NotificationsPanel({ supplierId, compact = false }: Notification
                       isMarking={markingAsRead.includes(notification.id)}
                       formatDate={formatDate}
                       compact
+                      index={index}
                     />
                   ))
                 )}
@@ -225,7 +226,7 @@ export function NotificationsPanel({ supplierId, compact = false }: Notification
 
   // Vista completa
   return (
-    <div className="bg-white rounded-lg shadow border border-gray-200">
+    <div className="glass-card rounded-lg border border-white/20 fade-in">
       <div className="p-6 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">
@@ -254,13 +255,14 @@ export function NotificationsPanel({ supplierId, compact = false }: Notification
             <p>No hay notificaciones</p>
           </div>
         ) : (
-          notifications.map((notification) => (
+          notifications.map((notification, index) => (
             <NotificationItem
               key={notification.id}
               notification={notification}
               onMarkAsRead={markAsRead}
               isMarking={markingAsRead.includes(notification.id)}
               formatDate={formatDate}
+              index={index}
             />
           ))
         )}
@@ -275,17 +277,19 @@ interface NotificationItemProps {
   isMarking: boolean;
   formatDate: (dateString: string) => string;
   compact?: boolean;
+  index?: number;
 }
 
-function NotificationItem({ notification, onMarkAsRead, isMarking, formatDate, compact = false }: NotificationItemProps) {
+function NotificationItem({ notification, onMarkAsRead, isMarking, formatDate, compact = false, index = 0 }: NotificationItemProps) {
   const Icon = NOTIFICATION_ICONS[notification.type];
   const colorClass = NOTIFICATION_COLORS[notification.type];
 
   return (
     <div 
-      className={`p-4 hover:bg-gray-50 transition-colors ${
-        !notification.is_read ? 'bg-blue-50 border-l-4 border-blue-500' : ''
+      className={`p-4 hover:bg-white/20 transition-all duration-200 hover-lift fade-in ${
+        !notification.is_read ? 'bg-blue-50/50 border-l-4 border-cyan-500' : ''
       }`}
+      style={{animationDelay: `${index * 0.1}s`}}
     >
       <div className="flex items-start space-x-3">
         <div className={`p-2 rounded-full ${colorClass}`}>
@@ -304,7 +308,7 @@ function NotificationItem({ notification, onMarkAsRead, isMarking, formatDate, c
               <button
                 onClick={() => onMarkAsRead([notification.id])}
                 disabled={isMarking}
-                className="ml-2 text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                className="ml-2 text-cyan-600 hover:text-cyan-700 disabled:opacity-50 transition-all duration-200 hover:scale-110"
                 title="Marcar como leída"
               >
                 <Check className="w-4 h-4" />

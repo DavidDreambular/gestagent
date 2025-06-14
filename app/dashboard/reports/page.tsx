@@ -21,16 +21,11 @@ import {
   AreaChart,
   Area,
   ComposedChart,
-  Treemap,
-  FunnelChart,
-  Funnel,
-  LabelList
 } from 'recharts';
 import { 
   BarChart3, 
   TrendingUp, 
   Download, 
-  Calendar,
   DollarSign,
   FileText,
   Users,
@@ -44,6 +39,7 @@ export default function ReportsPage() {
   const [documents, setDocuments] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [entityMatchingStats, setEntityMatchingStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -54,9 +50,9 @@ export default function ReportsPage() {
     try {
       setLoading(true);
       const [docsRes, suppliersRes, customersRes] = await Promise.all([
-        fetch('/api/documents/list'),
-        fetch('/api/suppliers'),
-        fetch('/api/customers')
+        fetch('/api/documents/list?limit=1000'), // Obtener más documentos para análisis
+        fetch('/api/suppliers?limit=1000'),
+        fetch('/api/customers?limit=1000')
       ]);
 
       if (docsRes.ok) {
@@ -66,12 +62,25 @@ export default function ReportsPage() {
 
       if (suppliersRes.ok) {
         const suppliersData = await suppliersRes.json();
-        setSuppliers(suppliersData.suppliers || []);
+        // Corregir la estructura de respuesta anidada
+        setSuppliers(suppliersData.data?.suppliers || suppliersData.suppliers || []);
       }
 
       if (customersRes.ok) {
         const customersData = await customersRes.json();
-        setCustomers(customersData.customers || []);
+        // Corregir la estructura de respuesta anidada
+        setCustomers(customersData.data?.customers || customersData.customers || []);
+      }
+
+      // Obtener estadísticas de entity matching
+      try {
+        const entityStatsRes = await fetch('/api/reports/entity-matching-stats');
+        if (entityStatsRes.ok) {
+          const entityStats = await entityStatsRes.json();
+          setEntityMatchingStats(entityStats);
+        }
+      } catch (entityError) {
+        console.warn('Error fetching entity matching stats:', entityError);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -109,7 +118,8 @@ export default function ReportsPage() {
   const getDocumentTypeDistribution = () => {
     const total = documents.length;
     const typeCount = documents.reduce((acc, doc) => {
-      acc[doc.document_type] = (acc[doc.document_type] || 0) + 1;
+      const type = doc.document_type || 'Sin clasificar';
+      acc[type] = (acc[type] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
@@ -138,30 +148,91 @@ export default function ReportsPage() {
       const date = new Date();
       date.setMonth(date.getMonth() - i);
       const monthKey = date.toLocaleDateString('es-ES', { month: 'short' });
-      monthlyData.set(monthKey, { month: monthKey, count: 0 });
+      monthlyData.set(monthKey, { month: monthKey, count: 0, totalAmount: 0 });
     }
 
     documents.forEach(doc => {
-      const date = new Date(doc.created_at);
+      const date = new Date(doc.upload_timestamp || doc.created_at);
       const monthKey = date.toLocaleDateString('es-ES', { month: 'short' });
       const monthData = monthlyData.get(monthKey);
       if (monthData) {
         monthData.count++;
+        // Extraer cantidad total de los datos procesados
+        if (doc.processed_json) {
+          const total = doc.processed_json.total || doc.processed_json.total_amount || 0;
+          monthData.totalAmount += parseFloat(total) || 0;
+        }
       }
     });
 
     return Array.from(monthlyData.values());
   };
 
-  const getTopSuppliers = () => {
-    return suppliers
-      .map(supplier => ({
-        name: supplier.name.length > 20 ? supplier.name.substring(0, 20) + '...' : supplier.name,
-        total_invoices: supplier.total_invoices || Math.floor(Math.random() * 50) + 5,
-        total_amount: supplier.total_amount || Math.floor(Math.random() * 100000) + 10000
-      }))
+  const getTopSuppliersByRealData = () => {
+    // Calcular datos reales de facturación por proveedor
+    const supplierData = new Map();
+    
+    // Inicializar con todos los proveedores
+    suppliers.forEach(supplier => {
+      supplierData.set(supplier.name || supplier.nif_cif, {
+        name: (supplier.name || supplier.nif_cif).length > 20 
+          ? (supplier.name || supplier.nif_cif).substring(0, 20) + '...' 
+          : (supplier.name || supplier.nif_cif),
+        total_invoices: 0,
+        total_amount: 0
+      });
+    });
+
+    // Agregar datos de documentos procesados
+    documents.forEach(doc => {
+      if (doc.emitter_name && doc.processed_json) {
+        const supplierKey = doc.emitter_name;
+        if (!supplierData.has(supplierKey)) {
+          supplierData.set(supplierKey, {
+            name: supplierKey.length > 20 ? supplierKey.substring(0, 20) + '...' : supplierKey,
+            total_invoices: 0,
+            total_amount: 0
+          });
+        }
+        
+        const supplier = supplierData.get(supplierKey);
+        supplier.total_invoices++;
+        
+        // Calcular total real desde documentos procesados
+        if (doc.processed_json.detected_invoices && Array.isArray(doc.processed_json.detected_invoices)) {
+          doc.processed_json.detected_invoices.forEach((invoice: any) => {
+            const amount = parseFloat(invoice.total_amount || invoice.totals?.total || 0);
+            supplier.total_amount += amount;
+          });
+        } else {
+          const amount = parseFloat(doc.processed_json.total || doc.processed_json.total_amount || 0);
+          supplier.total_amount += amount;
+        }
+      }
+    });
+
+    return Array.from(supplierData.values())
+      .filter(s => s.total_amount > 0)
       .sort((a, b) => b.total_amount - a.total_amount)
       .slice(0, 5);
+  };
+
+  const getTotalInvoiceAmount = () => {
+    let total = 0;
+    documents.forEach(doc => {
+      if (doc.processed_json) {
+        if (doc.processed_json.detected_invoices && Array.isArray(doc.processed_json.detected_invoices)) {
+          doc.processed_json.detected_invoices.forEach((invoice: any) => {
+            const amount = parseFloat(invoice.total_amount || invoice.totals?.total || 0);
+            total += amount;
+          });
+        } else {
+          const amount = parseFloat(doc.processed_json.total || doc.processed_json.total_amount || 0);
+          total += amount;
+        }
+      }
+    });
+    return total;
   };
 
   const documentStats = getDocumentStats();
@@ -169,7 +240,8 @@ export default function ReportsPage() {
   const customerStats = getCustomerStats();
   const statusDistribution = getStatusDistribution();
   const monthlyTrend = getMonthlyTrend();
-  const topSuppliers = getTopSuppliers();
+  const topSuppliers = getTopSuppliersByRealData();
+  const totalInvoiceAmount = getTotalInvoiceAmount();
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -230,17 +302,15 @@ export default function ReportsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tasa de Éxito</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Facturación Total</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {documentStats.total > 0 
-                ? Math.round((documentStats.completed / documentStats.total) * 100)
-                : 0}%
+              €{totalInvoiceAmount.toLocaleString('es-ES', { minimumFractionDigits: 2 })}
             </div>
             <p className="text-xs text-muted-foreground">
-              Documentos completados
+              Facturas procesadas
             </p>
           </CardContent>
         </Card>
@@ -252,6 +322,7 @@ export default function ReportsPage() {
           <TabsTrigger value="documents">Documentos</TabsTrigger>
           <TabsTrigger value="suppliers">Proveedores</TabsTrigger>
           <TabsTrigger value="customers">Clientes</TabsTrigger>
+          <TabsTrigger value="entity-matching">Entity Matching</TabsTrigger>
           <TabsTrigger value="performance">Rendimiento</TabsTrigger>
         </TabsList>
 
@@ -346,15 +417,15 @@ export default function ReportsPage() {
             </Card>
           </div>
 
-          {/* Área de procesamiento en tiempo real */}
+          {/* Facturación mensual */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Activity className="h-5 w-5" />
-                Actividad de Procesamiento
+                Facturación Mensual
               </CardTitle>
               <CardDescription>
-                Vista temporal de la actividad del sistema
+                Evolución del volumen de facturación procesado
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -363,10 +434,10 @@ export default function ReportsPage() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis />
-                  <Tooltip />
+                  <Tooltip formatter={(value) => [`€${parseFloat(value as string).toLocaleString('es-ES')}`, 'Facturación']} />
                   <Area 
                     type="monotone" 
-                    dataKey="count" 
+                    dataKey="totalAmount" 
                     stroke="#8B5CF6" 
                     fill="#8B5CF6" 
                     fillOpacity={0.3}
@@ -379,7 +450,7 @@ export default function ReportsPage() {
 
         <TabsContent value="suppliers" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            {/* Top Proveedores - Horizontal Bar Chart */}
+            {/* Top Proveedores con datos reales */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -387,7 +458,7 @@ export default function ReportsPage() {
                   Top Proveedores por Facturación
                 </CardTitle>
                 <CardDescription>
-                  Ranking de proveedores por volumen
+                  Ranking basado en facturas procesadas
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -396,22 +467,22 @@ export default function ReportsPage() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis type="number" />
                     <YAxis dataKey="name" type="category" width={100} />
-                    <Tooltip formatter={(value) => [`€${value.toLocaleString()}`, 'Facturación']} />
+                    <Tooltip formatter={(value) => [`€${parseFloat(value as string).toLocaleString('es-ES')}`, 'Facturación']} />
                     <Bar dataKey="total_amount" fill="#14B8A6" />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
 
-            {/* Distribución por Sectores */}
+            {/* Distribución por Sectores con datos reales */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Target className="h-5 w-5" />
-                  Distribución por Sectores
+                  Distribución de Proveedores
                 </CardTitle>
                 <CardDescription>
-                  Análisis sectorial de proveedores
+                  Estados de proveedores registrados
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -419,10 +490,8 @@ export default function ReportsPage() {
                   <PieChart>
                     <Pie
                       data={[
-                        { name: 'Servicios', value: supplierStats.active, color: '#3B82F6' },
-                        { name: 'Tecnología', value: Math.floor(supplierStats.total * 0.3), color: '#10B981' },
-                        { name: 'Consultoría', value: Math.floor(supplierStats.total * 0.2), color: '#F59E0B' },
-                        { name: 'Otros', value: supplierStats.total - supplierStats.active - Math.floor(supplierStats.total * 0.5), color: '#EF4444' }
+                        { name: 'Activos', value: supplierStats.active, color: '#10B981' },
+                        { name: 'Inactivos', value: supplierStats.total - supplierStats.active, color: '#EF4444' }
                       ]}
                       cx="50%"
                       cy="50%"
@@ -432,9 +501,7 @@ export default function ReportsPage() {
                       label={({ name, value }) => `${name}: ${value}`}
                     >
                       {[
-                        { color: '#3B82F6' },
                         { color: '#10B981' },
-                        { color: '#F59E0B' },
                         { color: '#EF4444' }
                       ].map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
@@ -447,12 +514,12 @@ export default function ReportsPage() {
             </Card>
           </div>
 
-          {/* Métricas KPI */}
+          {/* Métricas KPI con datos reales */}
           <Card>
             <CardHeader>
               <CardTitle>Métricas de Proveedores</CardTitle>
               <CardDescription>
-                Indicadores clave de rendimiento
+                Indicadores basados en datos reales
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -461,7 +528,7 @@ export default function ReportsPage() {
                   <div className="text-2xl font-bold text-blue-600">{supplierStats.total}</div>
                   <div className="text-sm text-gray-600">Total Proveedores</div>
                   <Badge variant="secondary" className="mt-2">
-                    +{Math.floor(supplierStats.total * 0.1)} este mes
+                    Registrados
                   </Badge>
                 </div>
                 <div className="text-center p-4 border rounded-lg bg-green-50">
@@ -472,19 +539,19 @@ export default function ReportsPage() {
                   </Badge>
                 </div>
                 <div className="text-center p-4 border rounded-lg bg-purple-50">
-                  <div className="text-2xl font-bold text-purple-600">{supplierStats.sectors}</div>
-                  <div className="text-sm text-gray-600">Sectores</div>
+                  <div className="text-2xl font-bold text-purple-600">{topSuppliers.length}</div>
+                  <div className="text-sm text-gray-600">Con Facturas</div>
                   <Badge variant="secondary" className="mt-2">
-                    Diversificado
+                    Procesadas
                   </Badge>
                 </div>
                 <div className="text-center p-4 border rounded-lg bg-orange-50">
                   <div className="text-2xl font-bold text-orange-600">
-                    €{Math.floor(topSuppliers.reduce((sum, s) => sum + s.total_amount, 0) / 1000)}K
+                    €{Math.round(topSuppliers.reduce((sum, s) => sum + s.total_amount, 0)).toLocaleString('es-ES')}
                   </div>
                   <div className="text-sm text-gray-600">Facturación Total</div>
                   <Badge variant="secondary" className="mt-2">
-                    Top 5 proveedores
+                    Top proveedores
                   </Badge>
                 </div>
               </div>
@@ -494,15 +561,15 @@ export default function ReportsPage() {
 
         <TabsContent value="customers" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            {/* Tipos de Clientes */}
+            {/* Estados de Clientes */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Users className="h-5 w-5" />
-                  Distribución por Tipo
+                  Estado de Clientes
                 </CardTitle>
                 <CardDescription>
-                  Segmentación de clientes por tipo
+                  Distribución por estado de actividad
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -510,9 +577,8 @@ export default function ReportsPage() {
                   <PieChart>
                     <Pie
                       data={[
-                        { name: 'Empresa', value: Math.floor(customerStats.total * 0.6), color: '#3B82F6' },
-                        { name: 'Particular', value: Math.floor(customerStats.total * 0.3), color: '#10B981' },
-                        { name: 'Freelance', value: Math.floor(customerStats.total * 0.1), color: '#F59E0B' }
+                        { name: 'Activos', value: customerStats.active, color: '#10B981' },
+                        { name: 'Inactivos', value: customerStats.total - customerStats.active, color: '#EF4444' }
                       ]}
                       cx="50%"
                       cy="50%"
@@ -522,9 +588,8 @@ export default function ReportsPage() {
                       label={({ name, value }) => `${name}: ${value}`}
                     >
                       {[
-                        { color: '#3B82F6' },
                         { color: '#10B981' },
-                        { color: '#F59E0B' }
+                        { color: '#EF4444' }
                       ].map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
@@ -535,12 +600,12 @@ export default function ReportsPage() {
               </CardContent>
             </Card>
 
-            {/* Actividad de Clientes */}
+            {/* Comparativa Actividad */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Activity className="h-5 w-5" />
-                  Estado de Actividad
+                  Comparativa de Estados
                 </CardTitle>
                 <CardDescription>
                   Análisis de la actividad de clientes
@@ -564,12 +629,12 @@ export default function ReportsPage() {
             </Card>
           </div>
 
-          {/* Métricas de Clientes */}
+          {/* Métricas de Clientes con datos reales */}
           <Card>
             <CardHeader>
               <CardTitle>Métricas de Clientes</CardTitle>
               <CardDescription>
-                Indicadores clave de la cartera de clientes
+                Indicadores de la cartera de clientes
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -578,26 +643,222 @@ export default function ReportsPage() {
                   <div className="text-2xl font-bold text-blue-600">{customerStats.total}</div>
                   <div className="text-sm text-gray-600">Total Clientes</div>
                   <Badge variant="secondary" className="mt-2">
-                    Base sólida
+                    Registrados
                   </Badge>
                 </div>
                 <div className="text-center p-4 border rounded-lg bg-green-50">
                   <div className="text-2xl font-bold text-green-600">{customerStats.active}</div>
                   <div className="text-sm text-gray-600">Activos</div>
                   <Badge variant="secondary" className="mt-2">
-                    {Math.round((customerStats.active / customerStats.total) * 100)}% activos
+                    {customerStats.total > 0 ? Math.round((customerStats.active / customerStats.total) * 100) : 0}% activos
                   </Badge>
                 </div>
                 <div className="text-center p-4 border rounded-lg bg-purple-50">
                   <div className="text-2xl font-bold text-purple-600">{customerStats.types}</div>
                   <div className="text-sm text-gray-600">Tipos</div>
                   <Badge variant="secondary" className="mt-2">
-                    Diversificado
+                    Categorías
                   </Badge>
                 </div>
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="entity-matching" className="space-y-4">
+          {/* Entity Matching Statistics */}
+          {entityMatchingStats ? (
+            <>
+              {/* Summary Cards */}
+              <div className="grid gap-4 md:grid-cols-4">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Tasa de Automatización</CardTitle>
+                    <Target className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-600">
+                      {entityMatchingStats.executive_summary?.automation_success_rate || '0%'}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Documentos vinculados automáticamente
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Entidades Auto-creadas</CardTitle>
+                    <Building className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-blue-600">
+                      {entityMatchingStats.executive_summary?.entities_auto_created || 0}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Proveedores y clientes nuevos
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Confianza Promedio</CardTitle>
+                    <Activity className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-orange-600">
+                      {entityMatchingStats.executive_summary?.average_confidence || '0%'}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Precisión del matching
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Eficiencia del Sistema</CardTitle>
+                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-purple-600">
+                      {entityMatchingStats.executive_summary?.system_efficiency || 'N/A'}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Evaluación general
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Charts Section */}
+              <div className="grid gap-4 md:grid-cols-2">
+                {/* Confidence Distribution */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <PieChartIcon className="h-5 w-5" />
+                      Distribución de Confianza
+                    </CardTitle>
+                    <CardDescription>
+                      Niveles de confianza en el matching automático
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={entityMatchingStats.confidence_distribution?.map((item: any) => ({
+                            name: item.confidence_level,
+                            value: item.document_count,
+                            color: item.confidence_level.includes('Alto') ? '#10B981' :
+                                   item.confidence_level.includes('Medio') ? '#F59E0B' :
+                                   item.confidence_level.includes('Bajo') ? '#EF4444' : '#6B7280'
+                          })) || []}
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="value"
+                          label={({ name, value }) => `${name}: ${value}`}
+                        >
+                          {(entityMatchingStats.confidence_distribution || []).map((entry: any, index: number) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={entry.confidence_level.includes('Alto') ? '#10B981' :
+                                    entry.confidence_level.includes('Medio') ? '#F59E0B' :
+                                    entry.confidence_level.includes('Bajo') ? '#EF4444' : '#6B7280'} 
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                {/* Matching Methods */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5" />
+                      Métodos de Matching
+                    </CardTitle>
+                    <CardDescription>
+                      Distribución por tipo de algoritmo usado
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={entityMatchingStats.matching_methods || []}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="match_method" />
+                        <YAxis />
+                        <Tooltip 
+                          formatter={(value, name) => [
+                            value, 
+                            name === 'total_matches' ? 'Total Matches' : 
+                            name === 'avg_confidence' ? 'Confianza Promedio' : name
+                          ]}
+                        />
+                        <Bar dataKey="total_matches" fill="#3B82F6" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Recent Auto-Created Entities */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Entidades Auto-creadas Recientes</CardTitle>
+                  <CardDescription>
+                    Últimas entidades creadas automáticamente por el sistema
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {entityMatchingStats.recent_auto_created?.length > 0 ? (
+                      entityMatchingStats.recent_auto_created.map((entity: any, index: number) => (
+                        <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <Badge variant={entity.entity_type === 'supplier' ? 'default' : 'secondary'}>
+                              {entity.entity_type === 'supplier' ? 'Proveedor' : 'Cliente'}
+                            </Badge>
+                            <div>
+                              <div className="font-medium">{entity.entity_name}</div>
+                              <div className="text-sm text-gray-500">{entity.nif_cif}</div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm font-medium">
+                              €{entity.total_amount?.toLocaleString('es-ES', { minimumFractionDigits: 2 }) || '0.00'}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {entity.total_invoices || 0} facturas
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        No hay entidades auto-creadas recientes
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <Card>
+              <CardContent className="py-8">
+                <div className="text-center text-gray-500">
+                  {loading ? 'Cargando estadísticas de Entity Matching...' : 'No hay datos de Entity Matching disponibles'}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="performance" className="space-y-4">
@@ -659,21 +920,20 @@ export default function ReportsPage() {
                     { stage: 'Recibidos', count: documentStats.total },
                     { stage: 'Procesando', count: documentStats.processing + documentStats.completed },
                     { stage: 'Completados', count: documentStats.completed },
-                    { stage: 'Validados', count: Math.floor(documentStats.completed * 0.9) }
+                    { stage: 'Con errores', count: documentStats.errors }
                   ]}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="stage" />
                     <YAxis />
                     <Tooltip />
                     <Bar dataKey="count" fill="#8B5CF6" />
-                    <Line type="monotone" dataKey="count" stroke="#EC4899" strokeWidth={3} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
           </div>
 
-          {/* Panel de Estado del Sistema */}
+          {/* Panel de Estado del Sistema con datos reales */}
           <Card>
             <CardHeader>
               <CardTitle>Estado del Sistema</CardTitle>
@@ -689,7 +949,7 @@ export default function ReportsPage() {
                   </div>
                   <div className="text-sm text-gray-600">Tasa de Éxito</div>
                   <Badge variant="default" className="mt-2 bg-green-100 text-green-800">
-                    Excelente
+                    {documentStats.total > 0 && (documentStats.completed / documentStats.total) > 0.8 ? 'Excelente' : 'Bueno'}
                   </Badge>
                 </div>
                 <div className="text-center p-4 border rounded-lg bg-red-50">
@@ -698,14 +958,14 @@ export default function ReportsPage() {
                   </div>
                   <div className="text-sm text-gray-600">Tasa de Error</div>
                   <Badge variant="default" className="mt-2 bg-red-100 text-red-800">
-                    Bajo
+                    {documentStats.total > 0 && (documentStats.errors / documentStats.total) < 0.1 ? 'Bajo' : 'Revisar'}
                   </Badge>
                 </div>
                 <div className="text-center p-4 border rounded-lg bg-blue-50">
-                  <div className="text-2xl font-bold text-blue-600">2.3s</div>
-                  <div className="text-sm text-gray-600">Tiempo Promedio</div>
+                  <div className="text-2xl font-bold text-blue-600">{documentStats.total}</div>
+                  <div className="text-sm text-gray-600">Documentos Total</div>
                   <Badge variant="default" className="mt-2 bg-blue-100 text-blue-800">
-                    Rápido
+                    Procesados
                   </Badge>
                 </div>
                 <div className="text-center p-4 border rounded-lg bg-purple-50">
@@ -714,7 +974,7 @@ export default function ReportsPage() {
                   </div>
                   <div className="text-sm text-gray-600">En Cola</div>
                   <Badge variant="default" className="mt-2 bg-purple-100 text-purple-800">
-                    Normal
+                    {documentStats.processing === 0 ? 'Vacía' : 'Procesando'}
                   </Badge>
                 </div>
               </div>
@@ -730,4 +990,4 @@ export default function ReportsPage() {
       )}
     </div>
   );
-} 
+}

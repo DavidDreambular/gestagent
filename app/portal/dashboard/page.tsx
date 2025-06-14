@@ -137,9 +137,9 @@ export default function PortalDashboard() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Cargando dashboard...</p>
+        <div className="text-center glass-card p-8 rounded-xl relative z-10">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500 mx-auto"></div>
+          <p className="mt-4 text-gray-700">Cargando dashboard...</p>
         </div>
       </div>
     );
@@ -163,9 +163,9 @@ export default function PortalDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen relative z-10">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
+      <div className="glass-card border-b border-white/20 fade-in">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div>
@@ -177,7 +177,7 @@ export default function PortalDashboard() {
               <NotificationsPanel compact />
               <button
                 onClick={() => router.push('/portal/upload')}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2"
+                className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-4 py-2 rounded-lg hover:from-blue-600 hover:to-cyan-600 flex items-center space-x-2 transition-all duration-300 hover-lift ripple"
               >
                 <Upload className="w-4 h-4" />
                 <span>Subir Documento</span>
@@ -190,50 +190,50 @@ export default function PortalDashboard() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Estadísticas */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="glass-card rounded-lg p-6 hover-lift fade-in" style={{animationDelay: '0.1s'}}>
             <div className="flex items-center">
-              <div className="p-2 bg-blue-100 rounded-lg">
+              <div className="p-2 bg-blue-100 rounded-lg hover-glow">
                 <FileText className="w-6 h-6 text-blue-600" />
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Total Documentos</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalDocuments}</p>
+                <p className="text-2xl font-bold text-gray-900 number-transition">{stats.totalDocuments}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="glass-card rounded-lg p-6 hover-lift fade-in" style={{animationDelay: '0.2s'}}>
             <div className="flex items-center">
-              <div className="p-2 bg-yellow-100 rounded-lg">
-                <Clock className="w-6 h-6 text-yellow-600" />
+              <div className="p-2 bg-yellow-100 rounded-lg hover-glow">
+                <Clock className="w-6 h-6 text-yellow-600 pulse-dot" />
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Pendientes</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.pendingDocuments}</p>
+                <p className="text-2xl font-bold text-gray-900 number-transition">{stats.pendingDocuments}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="glass-card rounded-lg p-6 hover-lift fade-in" style={{animationDelay: '0.3s'}}>
             <div className="flex items-center">
-              <div className="p-2 bg-green-100 rounded-lg">
+              <div className="p-2 bg-green-100 rounded-lg hover-glow">
                 <CheckCircle className="w-6 h-6 text-green-600" />
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Completados</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.completedDocuments}</p>
+                <p className="text-2xl font-bold text-gray-900 number-transition">{stats.completedDocuments}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="glass-card rounded-lg p-6 hover-lift fade-in" style={{animationDelay: '0.4s'}}>
             <div className="flex items-center">
-              <div className="p-2 bg-purple-100 rounded-lg">
+              <div className="p-2 bg-purple-100 rounded-lg hover-glow">
                 <TrendingUp className="w-6 h-6 text-purple-600" />
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Este Mes</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.monthlyUploads}</p>
+                <p className="text-2xl font-bold text-gray-900 number-transition">{stats.monthlyUploads}</p>
               </div>
             </div>
           </div>
@@ -242,7 +242,7 @@ export default function PortalDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Documentos Recientes */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-lg shadow">
+            <div className="glass-card rounded-lg hover-lift fade-in" style={{animationDelay: '0.5s'}}>
               <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <h2 className="text-lg font-semibold text-gray-900">
@@ -270,8 +270,8 @@ export default function PortalDashboard() {
                     </button>
                   </div>
                 ) : (
-                  recentDocuments.map((doc) => (
-                    <div key={doc.job_id} className="p-6 hover:bg-gray-50">
+                  recentDocuments.map((doc, index) => (
+                    <div key={doc.job_id} className="p-6 hover:bg-white/50 transition-all duration-200 hover-lift" style={{animationDelay: `${0.6 + index * 0.1}s`}}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
                           <div className="p-2 bg-gray-100 rounded-lg">
@@ -293,7 +293,7 @@ export default function PortalDashboard() {
                           </span>
                           <button
                             onClick={() => router.push(`/portal/documents/${doc.job_id}`)}
-                            className="text-gray-400 hover:text-gray-600"
+                            className="text-gray-400 hover:text-cyan-600 transition-colors hover:scale-110"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
@@ -314,7 +314,7 @@ export default function PortalDashboard() {
 
         {/* Acciones Rápidas */}
         <div className="mt-8">
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="glass-card rounded-lg p-6 fade-in" style={{animationDelay: '0.8s'}}>
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
               Acciones Rápidas
             </h2>
@@ -322,7 +322,7 @@ export default function PortalDashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <button
                 onClick={() => router.push('/portal/upload')}
-                className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex items-center space-x-3 p-4 border border-white/20 rounded-lg hover:bg-white/20 transition-all duration-300 hover-lift ripple"
               >
                 <Upload className="w-6 h-6 text-blue-600" />
                 <div className="text-left">
@@ -333,7 +333,7 @@ export default function PortalDashboard() {
 
               <button
                 onClick={() => router.push('/portal/documents')}
-                className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex items-center space-x-3 p-4 border border-white/20 rounded-lg hover:bg-white/20 transition-all duration-300 hover-lift ripple"
               >
                 <FileText className="w-6 h-6 text-green-600" />
                 <div className="text-left">
@@ -344,7 +344,7 @@ export default function PortalDashboard() {
 
               <button
                 onClick={() => router.push('/portal/settings')}
-                className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex items-center space-x-3 p-4 border border-white/20 rounded-lg hover:bg-white/20 transition-all duration-300 hover-lift ripple"
               >
                 <Settings className="w-6 h-6 text-purple-600" />
                 <div className="text-left">

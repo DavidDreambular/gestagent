@@ -28,7 +28,10 @@ import {
   Users,
   Activity,
   AlertCircle,
-  Receipt
+  Receipt,
+  CheckSquare,
+  Square,
+  X
 } from 'lucide-react';
 import Link from 'next/link';
 import { InvoiceHistory } from '@/components/entities/InvoiceHistory';
@@ -67,6 +70,11 @@ export default function SuppliersPage() {
   const [availableSectors, setAvailableSectors] = useState<string[]>([]);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [showInvoiceHistory, setShowInvoiceHistory] = useState(false);
+  
+  // Estados para selección múltiple
+  const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
 
   const fetchSuppliers = async () => {
     try {
@@ -122,6 +130,124 @@ export default function SuppliersPage() {
       console.error('Error deleting supplier:', error);
       alert('Error de conexión al eliminar el proveedor');
     }
+  };
+
+  // Funciones para selección múltiple
+  const handleSelectSupplier = (supplierId: string) => {
+    setSelectedSuppliers(prev => 
+      prev.includes(supplierId)
+        ? prev.filter(id => id !== supplierId)
+        : [...prev, supplierId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedSuppliers.length === suppliers.length) {
+      setSelectedSuppliers([]);
+    } else {
+      setSelectedSuppliers(suppliers.map(supplier => supplier.supplier_id));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedSuppliers.length === 0) return;
+
+    const selectedSupplierNames = selectedSuppliers.map(id => {
+      const supplier = suppliers.find(s => s.supplier_id === id);
+      return supplier?.name || id;
+    }).join(', ');
+
+    const hasInvoices = suppliers.some(s => 
+      selectedSuppliers.includes(s.supplier_id) && s.total_invoices > 0
+    );
+
+    let confirmMessage = `¿Estás seguro de que quieres eliminar ${selectedSuppliers.length} proveedores?\n\n${selectedSupplierNames}`;
+    
+    if (hasInvoices) {
+      confirmMessage += '\n\n⚠️ ADVERTENCIA: Algunos proveedores tienen facturas asociadas. Esto eliminará también las referencias en los documentos.';
+    }
+
+    if (!confirm(confirmMessage)) return;
+
+    setBulkDeleteLoading(true);
+    try {
+      const response = await fetch('/api/suppliers/bulk-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          supplier_ids: selectedSuppliers,
+          force_delete: hasInvoices // Permitir eliminación si hay facturas
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        const { results } = result;
+        let message = `✅ Operación completada:\n`;
+        message += `- ${results.deleted_count} proveedores eliminados\n`;
+        if (results.error_count > 0) {
+          message += `- ${results.error_count} errores\n`;
+        }
+        if (results.warning_count > 0) {
+          message += `- ${results.warning_count} advertencias`;
+        }
+
+        alert(message);
+        
+        // Limpiar selección y recargar
+        setSelectedSuppliers([]);
+        setIsSelectMode(false);
+        fetchSuppliers();
+      } else {
+        if (result.error_code === 'SUPPLIERS_HAVE_INVOICES') {
+          const suppliersWithInvoices = result.details.suppliers_with_invoices;
+          let errorMessage = '⚠️ Los siguientes proveedores tienen facturas asociadas:\n\n';
+          suppliersWithInvoices.forEach((s: any) => {
+            errorMessage += `• ${s.name}: ${s.total_invoices} facturas\n`;
+          });
+          errorMessage += '\nPuedes forzar la eliminación, pero se perderán las referencias en los documentos.';
+          
+          if (confirm(errorMessage + '\n\n¿Deseas continuar con la eliminación forzada?')) {
+            // Repetir con force_delete = true
+            const forceResponse = await fetch('/api/suppliers/bulk-delete', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                supplier_ids: selectedSuppliers,
+                force_delete: true
+              })
+            });
+
+            const forceResult = await forceResponse.json();
+            if (forceResult.success) {
+              alert(`✅ ${forceResult.results.deleted_count} proveedores eliminados (eliminación forzada)`);
+              setSelectedSuppliers([]);
+              setIsSelectMode(false);
+              fetchSuppliers();
+            } else {
+              alert(`❌ Error en eliminación forzada: ${forceResult.error}`);
+            }
+          }
+        } else {
+          alert(`❌ Error: ${result.error}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error in bulk delete:', error);
+      alert('❌ Error de conexión al eliminar proveedores');
+    } finally {
+      setBulkDeleteLoading(false);
+    }
+  };
+
+  const toggleSelectMode = () => {
+    setIsSelectMode(!isSelectMode);
+    setSelectedSuppliers([]);
   };
 
   const getStatusBadge = (status: string) => {
@@ -343,12 +469,75 @@ export default function SuppliersPage() {
         </CardContent>
       </Card>
 
+      {/* Controles de selección múltiple */}
+      <div className="flex items-center justify-between gap-4 bg-gray-50 p-4 rounded-lg">
+        <div className="flex items-center gap-4">
+          <Button
+            variant={isSelectMode ? "default" : "outline"}
+            onClick={toggleSelectMode}
+            className="flex items-center gap-2"
+          >
+            {isSelectMode ? <X className="h-4 w-4" /> : <CheckSquare className="h-4 w-4" />}
+            {isSelectMode ? 'Cancelar selección' : 'Seleccionar múltiple'}
+          </Button>
+
+          {isSelectMode && (
+            <>
+              <Button
+                variant="outline"
+                onClick={handleSelectAll}
+                className="flex items-center gap-2"
+              >
+                {selectedSuppliers.length === suppliers.length ? <Square className="h-4 w-4" /> : <CheckSquare className="h-4 w-4" />}
+                {selectedSuppliers.length === suppliers.length ? 'Deseleccionar todo' : 'Seleccionar todo'}
+              </Button>
+
+              <div className="text-sm text-gray-600">
+                {selectedSuppliers.length} de {suppliers.length} seleccionados
+              </div>
+            </>
+          )}
+        </div>
+
+        {isSelectMode && selectedSuppliers.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={bulkDeleteLoading}
+              className="flex items-center gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              {bulkDeleteLoading ? 'Eliminando...' : `Eliminar ${selectedSuppliers.length}`}
+            </Button>
+          </div>
+        )}
+      </div>
+
       {/* Lista de proveedores */}
       <div className="grid gap-4">
         {suppliers.map((supplier) => (
-          <Card key={supplier.supplier_id || supplier.id} className="hover:shadow-md transition-shadow">
+          <Card key={supplier.supplier_id || supplier.id} className={`hover:shadow-md transition-shadow ${
+            isSelectMode && selectedSuppliers.includes(supplier.supplier_id) ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+          }`}>
             <CardContent className="p-6">
               <div className="flex items-start justify-between">
+                {/* Checkbox de selección */}
+                {isSelectMode && (
+                  <div className="mr-4 mt-1">
+                    <button
+                      onClick={() => handleSelectSupplier(supplier.supplier_id)}
+                      className="flex items-center justify-center w-5 h-5 border-2 border-gray-300 rounded hover:border-blue-500 transition-colors"
+                    >
+                      {selectedSuppliers.includes(supplier.supplier_id) ? (
+                        <CheckSquare className="h-4 w-4 text-blue-600" />
+                      ) : (
+                        <Square className="h-4 w-4 text-gray-400" />
+                      )}
+                    </button>
+                  </div>
+                )}
+                
                 <div className="flex-1 space-y-3">
                   {/* Header del proveedor */}
                   <div className="flex items-start justify-between">

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signIn, getSession } from 'next-auth/react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,12 +55,22 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-gray-50">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-2xl text-center">Iniciar Sesión</CardTitle>
-          <CardDescription className="text-center">
-            Ingresa tus credenciales para acceder a GESTAGENT
+    <div className="flex justify-center items-center min-h-screen animated-gradient mesh-gradient">
+      <Card className="w-full max-w-md glass-card relative z-10 fade-in">
+        <CardHeader className="text-center">
+          <div className="flex justify-center mb-6">
+            <Image
+              src="/images/gestagent-logo-full.png"
+              alt="GestAgent Logo"
+              width={240}
+              height={80}
+              className="object-contain"
+              priority
+            />
+          </div>
+          <CardTitle className="text-2xl">Iniciar Sesión</CardTitle>
+          <CardDescription>
+            Ingresa tus credenciales para acceder al sistema
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -77,6 +88,7 @@ export default function LoginPage() {
                 placeholder="nombre@empresa.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                className="focus-ring"
                 required
               />
             </div>
@@ -85,7 +97,7 @@ export default function LoginPage() {
                 <Label htmlFor="password">Contraseña</Label>
                 <Link
                   href="/auth/forgot-password"
-                  className="text-sm text-blue-600 hover:text-blue-800"
+                  className="text-sm text-cyan-600 hover:text-cyan-700 transition-colors"
                 >
                   ¿Olvidaste tu contraseña?
                 </Link>
@@ -95,10 +107,11 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                className="focus-ring"
                 required
               />
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-all duration-300 transform hover:scale-[1.02] ripple hover-glow" disabled={isLoading}>
               {isLoading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
             </Button>
           </form>
@@ -106,7 +119,7 @@ export default function LoginPage() {
         <CardFooter className="flex justify-center">
           <p className="text-sm text-gray-600">
             ¿No tienes una cuenta?{' '}
-            <Link href="/auth/register" className="text-blue-600 hover:text-blue-800">
+            <Link href="/auth/register" className="text-cyan-600 hover:text-cyan-700 transition-colors">
               Regístrate aquí
             </Link>
           </p>

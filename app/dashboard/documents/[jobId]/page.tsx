@@ -261,6 +261,41 @@ export default function DocumentDetailPage() {
     }
   };
 
+  // Función para exportar a Excel SAGE
+  const handleSageExport = async () => {
+    try {
+      const response = await fetch('/api/documents/export/sage', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jobId,
+          invoices,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Error al exportar');
+      }
+
+      // Descargar el archivo
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `SAGE_Export_${jobId.slice(0, 8)}_${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exportando a SAGE:', error);
+      alert('Error al exportar a Excel SAGE');
+    }
+  };
+
   // Función para manejar cambios en campos editables
   const handleFieldChange = (field: string, newValue: any, invoiceIndex: number = selectedInvoice) => {
     // Actualizar el estado local inmediatamente
@@ -362,7 +397,12 @@ export default function DocumentDetailPage() {
               <Edit3 className="h-3 w-3 mr-1" />
               Edición directa habilitada
             </Badge>
-            <Button variant="outline" size="sm">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleSageExport}
+              disabled={invoices.length === 0}
+            >
               <Download className="h-4 w-4 mr-2" />
               Exportar Excel
             </Button>

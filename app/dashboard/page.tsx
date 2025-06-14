@@ -212,7 +212,7 @@ export default function DashboardPage() {
 
       {/* Tarjetas de estadísticas principales */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card className="hover-lift fade-in" style={{animationDelay: '0.1s'}}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               Total de Documentos
@@ -220,13 +220,13 @@ export default function DashboardPage() {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalDocuments}</div>
+            <div className="text-2xl font-bold number-transition">{stats.totalDocuments}</div>
             <p className="text-xs text-muted-foreground">
               Documentos procesados
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="hover-lift fade-in" style={{animationDelay: '0.2s'}}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               Procesados Hoy
@@ -234,13 +234,13 @@ export default function DashboardPage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.processedToday}</div>
+            <div className="text-2xl font-bold number-transition">{stats.processedToday}</div>
             <p className="text-xs text-muted-foreground">
               Documentos de hoy
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="hover-lift fade-in" style={{animationDelay: '0.3s'}}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               Proveedores Activos
@@ -248,7 +248,7 @@ export default function DashboardPage() {
             <Building2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-bold number-transition">
               {stats.activeSuppliers}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -256,7 +256,7 @@ export default function DashboardPage() {
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="hover-lift fade-in" style={{animationDelay: '0.4s'}}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               Clientes Activos
@@ -264,7 +264,7 @@ export default function DashboardPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-bold number-transition">
               {stats.activeCustomers}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -288,9 +288,9 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="animate-pulse space-y-2">
-                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+              <div className="space-y-2">
+                <div className="h-4 skeleton rounded w-3/4"></div>
+                <div className="h-4 skeleton rounded w-1/2"></div>
               </div>
             ) : (
               <div className="space-y-3">
@@ -325,9 +325,9 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="animate-pulse space-y-2">
-                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+              <div className="space-y-2">
+                <div className="h-4 skeleton rounded w-3/4"></div>
+                <div className="h-4 skeleton rounded w-1/2"></div>
               </div>
             ) : (
               <div className="space-y-3">
@@ -386,7 +386,7 @@ export default function DashboardPage() {
               {documents.slice(0, 5).map((doc) => (
                 <div
                   key={doc.jobId}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-all duration-200 hover:scale-[1.01] hover-lift"
                 >
                   <div className="flex items-center space-x-4">
                     <div className="p-2 bg-blue-100 rounded-md">

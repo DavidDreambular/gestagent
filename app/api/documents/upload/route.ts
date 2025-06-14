@@ -10,6 +10,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { suppliersCustomersManager } from '@/services/suppliers-customers-manager';
 import { enhancedTemplatesService } from '@/services/enhanced-extraction-templates.service';
+import { invoiceEntityLinkerService } from '@/services/invoice-entity-linker.service';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import AuditService, { AuditAction, AuditEntityType } from '@/services/audit.service';
@@ -250,25 +251,60 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // NUEVO: Procesar relaciones comerciales (proveedores/clientes)
+    // NUEVO: Procesar relaciones comerciales usando Entity Matching System
     let supplier_id: string | undefined;
     let customer_id: string | undefined;
     let relationsOperations: string[] = [];
+    let linkingResult: any = null;
 
     try {
-      console.log('🏢 [API] Procesando relaciones comerciales...');
-      const relations = await suppliersCustomersManager.processInvoiceRelations(
-        enhancedData,
-        jobId
-      );
-      supplier_id = relations.supplier_id;
-      customer_id = relations.customer_id;
-      relationsOperations = relations.operations;
+      console.log('🔗 [API] Ejecutando sistema de matching de entidades...');
+      linkingResult = await invoiceEntityLinkerService.linkDocumentToEntities(jobId, enhancedData);
       
-      console.log(`✅ [API] Relaciones procesadas: Proveedor=${supplier_id}, Cliente=${customer_id}`);
+      if (linkingResult.success) {
+        // Extraer primer proveedor y cliente vinculados
+        const primarySupplier = linkingResult.supplier_links.find((link: any) => link.entity_id !== null);
+        const primaryCustomer = linkingResult.customer_links.find((link: any) => link.entity_id !== null);
+        
+        supplier_id = primarySupplier?.entity_id || undefined;
+        customer_id = primaryCustomer?.entity_id || undefined;
+        
+        relationsOperations.push(
+          `Entity Matching: ${linkingResult.summary.successful_links}/${linkingResult.summary.total_invoices} facturas vinculadas`
+        );
+        
+        if (linkingResult.summary.new_entities_created > 0) {
+          relationsOperations.push(`${linkingResult.summary.new_entities_created} nuevas entidades creadas automáticamente`);
+        }
+        
+        console.log(`✅ [API] Entity Matching completado: Proveedor=${supplier_id}, Cliente=${customer_id}`);
+      } else {
+        console.log('⚠️ [API] Entity Matching falló, usando sistema legacy...');
+        // Fallback al sistema anterior
+        const relations = await suppliersCustomersManager.processInvoiceRelations(
+          enhancedData,
+          jobId
+        );
+        supplier_id = relations.supplier_id;
+        customer_id = relations.customer_id;
+        relationsOperations = relations.operations;
+      }
+      
     } catch (relationsError) {
-      console.error('❌ [API] Error procesando relaciones comerciales:', relationsError);
-      relationsOperations.push(`Error procesando relaciones: ${relationsError}`);
+      console.error('❌ [API] Error en entity matching, usando sistema legacy:', relationsError);
+      // Fallback al sistema anterior en caso de error
+      try {
+        const relations = await suppliersCustomersManager.processInvoiceRelations(
+          enhancedData,
+          jobId
+        );
+        supplier_id = relations.supplier_id;
+        customer_id = relations.customer_id;
+        relationsOperations = relations.operations;
+        relationsOperations.push(`Fallback utilizado debido a error en entity matching: ${relationsError}`);
+      } catch (fallbackError) {
+        relationsOperations.push(`Error en ambos sistemas de matching: ${fallbackError}`);
+      }
     }
 
     // Extraer totales para campos denormalizados
@@ -410,13 +446,21 @@ export async function POST(request: NextRequest) {
         storage_method: 'postgresql_local',
         // Información de plantillas aplicadas
         template_info: templateApplied,
-        // Información de relaciones comerciales
+        // Información de relaciones comerciales y entity matching
         relations: {
           supplier_id,
           customer_id,
           operations: relationsOperations,
           total_amount,
-          tax_amount
+          tax_amount,
+          // Detalles del entity matching
+          entity_matching: linkingResult ? {
+            success: linkingResult.success,
+            summary: linkingResult.summary,
+            supplier_links: linkingResult.supplier_links,
+            customer_links: linkingResult.customer_links,
+            statistics_updated: linkingResult.statistics_updated
+          } : null
         }
       }
     });

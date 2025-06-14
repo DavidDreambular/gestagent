@@ -28,7 +28,10 @@ import {
   Activity,
   AlertCircle,
   Building,
-  Receipt
+  Receipt,
+  CheckSquare,
+  Square,
+  X
 } from 'lucide-react';
 import Link from 'next/link';
 import { InvoiceHistory } from '@/components/entities/InvoiceHistory';
@@ -80,6 +83,11 @@ export default function CustomersPage() {
   const [availableTypes, setAvailableTypes] = useState<string[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showInvoiceHistory, setShowInvoiceHistory] = useState(false);
+  
+  // Estados para selección múltiple
+  const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
 
   const fetchCustomers = async () => {
     try {
@@ -135,6 +143,124 @@ export default function CustomersPage() {
       console.error('Error deleting customer:', error);
       alert('Error de conexión al eliminar el cliente');
     }
+  };
+
+  // Funciones para selección múltiple
+  const handleSelectCustomer = (customerId: string) => {
+    setSelectedCustomers(prev => 
+      prev.includes(customerId)
+        ? prev.filter(id => id !== customerId)
+        : [...prev, customerId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedCustomers.length === customers.length) {
+      setSelectedCustomers([]);
+    } else {
+      setSelectedCustomers(customers.map(customer => customer.customer_id));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedCustomers.length === 0) return;
+
+    const selectedCustomerNames = selectedCustomers.map(id => {
+      const customer = customers.find(c => c.customer_id === id);
+      return customer?.name || id;
+    }).join(', ');
+
+    const hasInvoices = customers.some(c => 
+      selectedCustomers.includes(c.customer_id) && c.total_invoices > 0
+    );
+
+    let confirmMessage = `¿Estás seguro de que quieres eliminar ${selectedCustomers.length} clientes?\n\n${selectedCustomerNames}`;
+    
+    if (hasInvoices) {
+      confirmMessage += '\n\n⚠️ ADVERTENCIA: Algunos clientes tienen facturas asociadas. Esto eliminará también las referencias en los documentos.';
+    }
+
+    if (!confirm(confirmMessage)) return;
+
+    setBulkDeleteLoading(true);
+    try {
+      const response = await fetch('/api/customers/bulk-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customer_ids: selectedCustomers,
+          force_delete: hasInvoices // Permitir eliminación si hay facturas
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        const { results } = result;
+        let message = `✅ Operación completada:\n`;
+        message += `- ${results.deleted_count} clientes eliminados\n`;
+        if (results.error_count > 0) {
+          message += `- ${results.error_count} errores\n`;
+        }
+        if (results.warning_count > 0) {
+          message += `- ${results.warning_count} advertencias`;
+        }
+
+        alert(message);
+        
+        // Limpiar selección y recargar
+        setSelectedCustomers([]);
+        setIsSelectMode(false);
+        fetchCustomers();
+      } else {
+        if (result.error_code === 'CUSTOMERS_HAVE_INVOICES') {
+          const customersWithInvoices = result.details.customers_with_invoices;
+          let errorMessage = '⚠️ Los siguientes clientes tienen facturas asociadas:\n\n';
+          customersWithInvoices.forEach((c: any) => {
+            errorMessage += `• ${c.name}: ${c.total_invoices} facturas\n`;
+          });
+          errorMessage += '\nPuedes forzar la eliminación, pero se perderán las referencias en los documentos.';
+          
+          if (confirm(errorMessage + '\n\n¿Deseas continuar con la eliminación forzada?')) {
+            // Repetir con force_delete = true
+            const forceResponse = await fetch('/api/customers/bulk-delete', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                customer_ids: selectedCustomers,
+                force_delete: true
+              })
+            });
+
+            const forceResult = await forceResponse.json();
+            if (forceResult.success) {
+              alert(`✅ ${forceResult.results.deleted_count} clientes eliminados (eliminación forzada)`);
+              setSelectedCustomers([]);
+              setIsSelectMode(false);
+              fetchCustomers();
+            } else {
+              alert(`❌ Error en eliminación forzada: ${forceResult.error}`);
+            }
+          }
+        } else {
+          alert(`❌ Error: ${result.error}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error in bulk delete:', error);
+      alert('❌ Error de conexión al eliminar clientes');
+    } finally {
+      setBulkDeleteLoading(false);
+    }
+  };
+
+  const toggleSelectMode = () => {
+    setIsSelectMode(!isSelectMode);
+    setSelectedCustomers([]);
   };
 
   const getStatusBadge = (status: string) => {
@@ -366,12 +492,75 @@ export default function CustomersPage() {
         </CardContent>
       </Card>
 
+      {/* Controles de selección múltiple */}
+      <div className="flex items-center justify-between gap-4 bg-gray-50 p-4 rounded-lg">
+        <div className="flex items-center gap-4">
+          <Button
+            variant={isSelectMode ? "default" : "outline"}
+            onClick={toggleSelectMode}
+            className="flex items-center gap-2"
+          >
+            {isSelectMode ? <X className="h-4 w-4" /> : <CheckSquare className="h-4 w-4" />}
+            {isSelectMode ? 'Cancelar selección' : 'Seleccionar múltiple'}
+          </Button>
+
+          {isSelectMode && (
+            <>
+              <Button
+                variant="outline"
+                onClick={handleSelectAll}
+                className="flex items-center gap-2"
+              >
+                {selectedCustomers.length === customers.length ? <Square className="h-4 w-4" /> : <CheckSquare className="h-4 w-4" />}
+                {selectedCustomers.length === customers.length ? 'Deseleccionar todo' : 'Seleccionar todo'}
+              </Button>
+
+              <div className="text-sm text-gray-600">
+                {selectedCustomers.length} de {customers.length} seleccionados
+              </div>
+            </>
+          )}
+        </div>
+
+        {isSelectMode && selectedCustomers.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={bulkDeleteLoading}
+              className="flex items-center gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              {bulkDeleteLoading ? 'Eliminando...' : `Eliminar ${selectedCustomers.length}`}
+            </Button>
+          </div>
+        )}
+      </div>
+
       {/* Lista de clientes */}
       <div className="grid gap-4">
         {customers.map((customer) => (
-          <Card key={customer.customer_id || customer.id} className="hover:shadow-md transition-shadow">
+          <Card key={customer.customer_id || customer.id} className={`hover:shadow-md transition-shadow ${
+            isSelectMode && selectedCustomers.includes(customer.customer_id) ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+          }`}>
             <CardContent className="p-6">
               <div className="flex items-start justify-between">
+                {/* Checkbox de selección */}
+                {isSelectMode && (
+                  <div className="mr-4 mt-1">
+                    <button
+                      onClick={() => handleSelectCustomer(customer.customer_id)}
+                      className="flex items-center justify-center w-5 h-5 border-2 border-gray-300 rounded hover:border-blue-500 transition-colors"
+                    >
+                      {selectedCustomers.includes(customer.customer_id) ? (
+                        <CheckSquare className="h-4 w-4 text-blue-600" />
+                      ) : (
+                        <Square className="h-4 w-4 text-gray-400" />
+                      )}
+                    </button>
+                  </div>
+                )}
+                
                 <div className="flex-1 space-y-3">
                   {/* Header del cliente */}
                   <div className="flex items-start justify-between">
