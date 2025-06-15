@@ -233,12 +233,25 @@ export function useApiConfig() {
 
   const testApiConnection = async (apiType: string, apiKey: string): Promise<boolean> => {
     try {
-      // Implementar test de conexión específico por API
       console.log(`🧪 [CONFIG] Probando conexión ${apiType}...`);
       
-      // Por ahora simular test exitoso
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return true;
+      const response = await fetch('/api/configuration/test-api', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ apiType, apiKey }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error(`❌ [CONFIG] Error de API: ${errorData.error}`);
+        return false;
+      }
+
+      const result = await response.json();
+      console.log(`${result.success ? '✅' : '❌'} [CONFIG] ${apiType}: ${result.message}`);
+      return result.success;
       
     } catch (error) {
       console.error(`❌ [CONFIG] Error probando ${apiType}:`, error);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,14 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { usePermissions } from '@/hooks/usePermissions';
 import { 
+  useConfiguration,
+  useCompanyConfig,
+  useApiConfig,
+  useNotificationConfig,
+  useBackupConfig
+} from '@/hooks/useConfiguration';
+import { useToast } from '@/components/ui/use-toast';
+import { 
   Settings,
   Building2,
   Key,
@@ -22,14 +30,318 @@ import {
   Eye,
   EyeOff,
   TestTube,
-  Upload
+  Upload,
+  Loader2
 } from 'lucide-react';
 import AdvancedTab from '@/components/dashboard/configuration/AdvancedTab';
+import { BackupTab } from '@/components/dashboard/configuration/BackupTab';
 
 export default function ConfigurationPage() {
   const { hasPermission, userRole } = usePermissions();
+  const { toast } = useToast();
   const [showApiKeys, setShowApiKeys] = useState(false);
   const [activeTab, setActiveTab] = useState('general');
+  const [isSaving, setIsSaving] = useState(false);
+  const [testingApi, setTestingApi] = useState<string | null>(null);
+  
+  // Configuration hooks
+  const { config, loading: configLoading, error: configError } = useConfiguration();
+  const { companyConfig, updateCompanyConfig } = useCompanyConfig();
+  const { apiConfig, updateApiConfig, testApiConnection } = useApiConfig();
+  const { notificationConfig, updateNotificationConfig } = useNotificationConfig();
+  const { backupConfig, updateBackupConfig } = useBackupConfig();
+  
+  // Form states
+  const [companyForm, setCompanyForm] = useState({
+    name: '',
+    cif: '',
+    address: '',
+    phone: '',
+    email: '',
+    logo_url: ''
+  });
+  
+  const [apiForm, setApiForm] = useState({
+    mistral_api_key: '',
+    openai_api_key: '',
+    openai_model: 'gpt-4'
+  });
+  
+  const [notificationForm, setNotificationForm] = useState({
+    email_enabled: true,
+    push_enabled: false,
+    in_app_enabled: true,
+    email_frequency: 'immediate',
+    push_frequency: 'immediate',
+    quiet_hours_enabled: false,
+    quiet_hours_start: '22:00',
+    quiet_hours_end: '08:00',
+    quiet_hours_days: [1, 2, 3, 4, 5], // L-V
+    new_documents: { email: false, push: false, in_app: true },
+    processing_errors: { email: true, push: true, in_app: true },
+    due_dates: { email: true, push: false, in_app: true },
+    system_updates: { email: false, push: false, in_app: true }
+  });
+  
+  const [backupForm, setBackupForm] = useState({
+    auto_backup_enabled: true,
+    backup_frequency: 'daily',
+    backup_time: '02:00',
+    backup_retention_days: 30,
+    backup_types: {
+      documents: true,
+      database: true,
+      configuration: true,
+      audit_logs: false
+    },
+    backup_destination: 'local'
+  });
+  
+  // Load configuration data
+  useEffect(() => {
+    if (companyConfig) {
+      setCompanyForm({
+        name: companyConfig.name || '',
+        cif: companyConfig.cif || '',
+        address: companyConfig.address || '',
+        phone: companyConfig.phone || '',
+        email: companyConfig.email || '',
+        logo_url: companyConfig.logo_url || ''
+      });
+    }
+  }, [companyConfig]);
+  
+  useEffect(() => {
+    if (apiConfig) {
+      setApiForm({
+        mistral_api_key: apiConfig.mistral_api_key || '',
+        openai_api_key: apiConfig.openai_api_key || '',
+        openai_model: 'gpt-4'
+      });
+    }
+  }, [apiConfig]);
+  
+  useEffect(() => {
+    if (notificationConfig) {
+      // Map notification config to form state
+      // This is a simplified version, you might need to adjust based on actual config structure
+    }
+  }, [notificationConfig]);
+  
+  useEffect(() => {
+    if (backupConfig) {
+      // Map backup config to form state
+    }
+  }, [backupConfig]);
+
+  // Save handlers
+  const saveCompanyConfig = async () => {
+    setIsSaving(true);
+    try {
+      const success = await updateCompanyConfig(companyForm);
+      if (success) {
+        toast({
+          title: 'Configuración guardada',
+          description: 'La información de la empresa se ha actualizado correctamente.',
+        });
+      } else {
+        throw new Error('Error al guardar configuración');
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudo guardar la configuración. Por favor, intenta de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveApiConfig = async () => {
+    setIsSaving(true);
+    try {
+      const success = await updateApiConfig(apiForm);
+      if (success) {
+        toast({
+          title: 'APIs actualizadas',
+          description: 'Las claves API se han guardado correctamente.',
+        });
+      } else {
+        throw new Error('Error al guardar APIs');
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudieron guardar las claves API.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const testApi = async (apiType: 'mistral' | 'openai') => {
+    setTestingApi(apiType);
+    try {
+      const apiKey = apiType === 'mistral' ? apiForm.mistral_api_key : apiForm.openai_api_key;
+      const success = await testApiConnection(apiType, apiKey);
+      
+      toast({
+        title: success ? 'Conexión exitosa' : 'Error de conexión',
+        description: success 
+          ? `La API de ${apiType === 'mistral' ? 'Mistral' : 'OpenAI'} está funcionando correctamente.`
+          : `No se pudo conectar con la API de ${apiType === 'mistral' ? 'Mistral' : 'OpenAI'}.`,
+        variant: success ? 'default' : 'destructive',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Error al probar la conexión.',
+        variant: 'destructive',
+      });
+    } finally {
+      setTestingApi(null);
+    }
+  };
+
+  const saveNotificationConfig = async () => {
+    setIsSaving(true);
+    try {
+      // Transform form data to config format
+      const configData = {
+        email_enabled: notificationForm.email_enabled,
+        push_enabled: notificationForm.push_enabled,
+        vencimientos_dias: 7, // Default value
+        alertas_criticas: true
+      };
+      
+      const success = await updateNotificationConfig(configData);
+      if (success) {
+        toast({
+          title: 'Notificaciones actualizadas',
+          description: 'Las preferencias de notificación se han guardado.',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudieron guardar las preferencias de notificación.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveBackupConfig = async () => {
+    setIsSaving(true);
+    try {
+      const configData = {
+        auto_backup_enabled: backupForm.auto_backup_enabled,
+        backup_frequency_days: backupForm.backup_frequency === 'daily' ? 1 : 
+                              backupForm.backup_frequency === 'weekly' ? 7 : 30,
+        backup_retention_days: backupForm.backup_retention_days,
+        backup_location: backupForm.backup_destination
+      };
+      
+      const success = await updateBackupConfig(configData);
+      if (success) {
+        toast({
+          title: 'Backup configurado',
+          description: 'La configuración de backup se ha actualizado.',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudo guardar la configuración de backup.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const createManualBackup = async () => {
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/configuration/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      if (response.ok) {
+        toast({
+          title: 'Backup iniciado',
+          description: 'El proceso de backup ha comenzado. Recibirás una notificación cuando termine.',
+        });
+      } else {
+        throw new Error('Error al crear backup');
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'No se pudo iniciar el backup.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validar tamaño
+    const maxSize = 2 * 1024 * 1024; // 2MB
+    if (file.size > maxSize) {
+      toast({
+        title: 'Archivo demasiado grande',
+        description: 'El logo no puede superar los 2MB.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const formData = new FormData();
+      formData.append('logo', file);
+
+      const response = await fetch('/api/configuration/logo', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setCompanyForm({ ...companyForm, logo_url: result.logo_url });
+        
+        // Actualizar también la configuración en el backend
+        await updateCompanyConfig({ ...companyForm, logo_url: result.logo_url });
+        
+        toast({
+          title: 'Logo subido',
+          description: 'El logo de la empresa se ha actualizado correctamente.',
+        });
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || 'Error al subir el logo');
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'No se pudo subir el logo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
+      // Limpiar el input
+      event.target.value = '';
+    }
+  };
 
   // Verificar permisos de acceso
   if (!hasPermission('config:read')) {
@@ -41,6 +353,18 @@ export default function ConfigurationPage() {
             No tienes permisos para acceder a la configuración del sistema.
           </AlertDescription>
         </Alert>
+      </div>
+    );
+  }
+
+  // Loading state
+  if (configLoading) {
+    return (
+      <div className="container mx-auto p-6 flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Cargando configuración...</p>
+        </div>
       </div>
     );
   }
@@ -114,6 +438,8 @@ export default function ConfigurationPage() {
                   <Input 
                     id="company-name" 
                     placeholder="Gestoría Ejemplo S.L."
+                    value={companyForm.name}
+                    onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })}
                     disabled={!hasPermission('config:update')}
                   />
                 </div>
@@ -122,6 +448,8 @@ export default function ConfigurationPage() {
                   <Input 
                     id="company-cif" 
                     placeholder="B12345678"
+                    value={companyForm.cif}
+                    onChange={(e) => setCompanyForm({ ...companyForm, cif: e.target.value })}
                     disabled={!hasPermission('config:update')}
                   />
                 </div>
@@ -132,6 +460,8 @@ export default function ConfigurationPage() {
                 <Textarea 
                   id="company-address" 
                   placeholder="Calle Ejemplo, 123&#10;28001 Madrid, España"
+                  value={companyForm.address}
+                  onChange={(e) => setCompanyForm({ ...companyForm, address: e.target.value })}
                   disabled={!hasPermission('config:update')}
                 />
               </div>
@@ -142,6 +472,8 @@ export default function ConfigurationPage() {
                   <Input 
                     id="company-phone" 
                     placeholder="+34 91 123 45 67"
+                    value={companyForm.phone}
+                    onChange={(e) => setCompanyForm({ ...companyForm, phone: e.target.value })}
                     disabled={!hasPermission('config:update')}
                   />
                 </div>
@@ -151,6 +483,8 @@ export default function ConfigurationPage() {
                     id="company-email" 
                     type="email"
                     placeholder="info@gestoria.com"
+                    value={companyForm.email}
+                    onChange={(e) => setCompanyForm({ ...companyForm, email: e.target.value })}
                     disabled={!hasPermission('config:update')}
                   />
                 </div>
@@ -159,24 +493,54 @@ export default function ConfigurationPage() {
               <div className="space-y-2">
                 <Label htmlFor="company-logo">Logo de la Empresa</Label>
                 <div className="flex items-center gap-4">
+                  <input
+                    type="file"
+                    id="logo-upload"
+                    className="hidden"
+                    accept="image/png,image/jpeg,image/jpg"
+                    onChange={handleLogoUpload}
+                    disabled={!hasPermission('config:update')}
+                  />
                   <Button 
                     variant="outline" 
                     className="flex items-center gap-2"
-                    disabled={!hasPermission('config:update')}
+                    onClick={() => document.getElementById('logo-upload')?.click()}
+                    disabled={!hasPermission('config:update') || isSaving}
                   >
-                    <Upload className="h-4 w-4" />
+                    {isSaving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
                     Subir Logo
                   </Button>
                   <span className="text-sm text-muted-foreground">
                     Formatos: PNG, JPG (máx. 2MB)
                   </span>
                 </div>
+                {companyForm.logo_url && (
+                  <div className="mt-4">
+                    <img 
+                      src={companyForm.logo_url} 
+                      alt="Logo de la empresa" 
+                      className="h-20 object-contain"
+                    />
+                  </div>
+                )}
               </div>
 
               {hasPermission('config:update') && (
                 <div className="flex justify-end">
-                  <Button className="flex items-center gap-2">
-                    <Save className="h-4 w-4" />
+                  <Button 
+                    className="flex items-center gap-2"
+                    onClick={saveCompanyConfig}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
                     Guardar Cambios
                   </Button>
                 </div>
@@ -211,6 +575,8 @@ export default function ConfigurationPage() {
                       id="mistral-key"
                       type={showApiKeys ? "text" : "password"}
                       placeholder="••••••••••••••••••••••••••••••••"
+                      value={apiForm.mistral_api_key}
+                      onChange={(e) => setApiForm({ ...apiForm, mistral_api_key: e.target.value })}
                       disabled={!hasPermission('config:apis')}
                     />
                     <Button 
@@ -220,8 +586,17 @@ export default function ConfigurationPage() {
                     >
                       {showApiKeys ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
-                    <Button variant="outline" className="flex items-center gap-2">
-                      <TestTube className="h-4 w-4" />
+                    <Button 
+                      variant="outline" 
+                      className="flex items-center gap-2"
+                      onClick={() => testApi('mistral')}
+                      disabled={!apiForm.mistral_api_key || testingApi === 'mistral'}
+                    >
+                      {testingApi === 'mistral' ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <TestTube className="h-4 w-4" />
+                      )}
                       Test
                     </Button>
                   </div>
@@ -241,6 +616,8 @@ export default function ConfigurationPage() {
                       id="openai-key"
                       type={showApiKeys ? "text" : "password"}
                       placeholder="••••••••••••••••••••••••••••••••"
+                      value={apiForm.openai_api_key}
+                      onChange={(e) => setApiForm({ ...apiForm, openai_api_key: e.target.value })}
                       disabled={!hasPermission('config:apis')}
                     />
                     <Button 
@@ -250,8 +627,17 @@ export default function ConfigurationPage() {
                     >
                       {showApiKeys ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
-                    <Button variant="outline" className="flex items-center gap-2">
-                      <TestTube className="h-4 w-4" />
+                    <Button 
+                      variant="outline" 
+                      className="flex items-center gap-2"
+                      onClick={() => testApi('openai')}
+                      disabled={!apiForm.openai_api_key || testingApi === 'openai'}
+                    >
+                      {testingApi === 'openai' ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <TestTube className="h-4 w-4" />
+                      )}
                       Test
                     </Button>
                   </div>
@@ -271,8 +657,16 @@ export default function ConfigurationPage() {
 
               {hasPermission('config:apis') && (
                 <div className="flex justify-end">
-                  <Button className="flex items-center gap-2">
-                    <Save className="h-4 w-4" />
+                  <Button 
+                    className="flex items-center gap-2"
+                    onClick={saveApiConfig}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
                     Guardar APIs
                   </Button>
                 </div>
@@ -478,8 +872,16 @@ export default function ConfigurationPage() {
               </div>
 
               <div className="flex justify-end">
-                <Button className="flex items-center gap-2">
-                  <Save className="h-4 w-4" />
+                <Button 
+                  className="flex items-center gap-2"
+                  onClick={saveNotificationConfig}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
                   Guardar Preferencias
                 </Button>
               </div>
@@ -489,190 +891,7 @@ export default function ConfigurationPage() {
 
         {/* Tab Backup */}
         <TabsContent value="backup" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Database className="h-5 w-5" />
-                Configuración de Backup
-              </CardTitle>
-              <CardDescription>
-                Gestión de copias de seguridad automáticas
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Configuración de Backup Automático */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Backup Automático</h3>
-                
-                <div className="p-4 border rounded-lg space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-base font-medium">Activar backup automático</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Realizar copias de seguridad de forma automática
-                      </p>
-                    </div>
-                    <Switch defaultChecked />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="backup-frequency">Frecuencia</Label>
-                      <select 
-                        id="backup-frequency" 
-                        className="w-full p-2 border rounded-md"
-                      >
-                        <option value="daily">Diario</option>
-                        <option value="weekly">Semanal</option>
-                        <option value="monthly">Mensual</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="backup-time">Hora de ejecución</Label>
-                      <Input 
-                        id="backup-time"
-                        type="time"
-                        defaultValue="02:00"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="backup-retention">Retención (días)</Label>
-                    <Input 
-                      id="backup-retention"
-                      type="number"
-                      defaultValue="30"
-                      min="1"
-                      max="365"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Número de días que se conservarán los backups
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Tipos de Datos a Respaldar */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Tipos de Datos</h3>
-                
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <Label className="font-medium">Documentos</Label>
-                      <p className="text-sm text-muted-foreground">
-                        PDFs originales y datos procesados
-                      </p>
-                    </div>
-                    <Switch defaultChecked />
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <Label className="font-medium">Base de Datos</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Metadatos y configuraciones
-                      </p>
-                    </div>
-                    <Switch defaultChecked />
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <Label className="font-medium">Configuración</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Ajustes del sistema y usuarios
-                      </p>
-                    </div>
-                    <Switch defaultChecked />
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <Label className="font-medium">Logs de Auditoría</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Registros de actividad del sistema
-                      </p>
-                    </div>
-                    <Switch />
-                  </div>
-                </div>
-              </div>
-
-              {/* Destino del Backup */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Destino del Backup</h3>
-                
-                <div className="space-y-3">
-                  <div className="flex items-center space-x-2">
-                    <input type="radio" id="local" name="backup-destination" value="local" defaultChecked />
-                    <Label htmlFor="local">Local (servidor)</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input type="radio" id="cloud" name="backup-destination" value="cloud" />
-                    <Label htmlFor="cloud">Cloud (AWS S3, Google Drive)</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input type="radio" id="both" name="backup-destination" value="both" />
-                    <Label htmlFor="both">Ambos (local + cloud)</Label>
-                  </div>
-                </div>
-              </div>
-
-              {/* Backup Manual */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Backup Manual</h3>
-                
-                <div className="p-4 border rounded-lg space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Crear una copia de seguridad inmediata de todos los datos
-                  </p>
-                  <Button className="flex items-center gap-2">
-                    <Database className="h-4 w-4" />
-                    Crear Backup Ahora
-                  </Button>
-                </div>
-              </div>
-
-              {/* Historial de Backups */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Historial de Backups</h3>
-                
-                <div className="space-y-2">
-                  {[
-                    { date: '2024-01-15 02:00', size: '2.3 GB', status: 'Exitoso' },
-                    { date: '2024-01-14 02:00', size: '2.1 GB', status: 'Exitoso' },
-                    { date: '2024-01-13 02:00', size: '2.0 GB', status: 'Exitoso' },
-                    { date: '2024-01-12 02:00', size: '1.9 GB', status: 'Error' },
-                    { date: '2024-01-11 02:00', size: '1.8 GB', status: 'Exitoso' }
-                  ].map((backup, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 rounded-full ${
-                          backup.status === 'Exitoso' ? 'bg-green-500' : 'bg-red-500'
-                        }`} />
-                        <div>
-                          <p className="font-medium">{backup.date}</p>
-                          <p className="text-sm text-muted-foreground">{backup.size}</p>
-                        </div>
-                      </div>
-                      <Badge variant={backup.status === 'Exitoso' ? 'default' : 'destructive'}>
-                        {backup.status}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <Button className="flex items-center gap-2">
-                  <Save className="h-4 w-4" />
-                  Guardar Configuración
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <BackupTab hasPermission={hasPermission} />
         </TabsContent>
 
         {/* Tab Avanzado */}

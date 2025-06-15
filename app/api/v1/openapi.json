@@ -1,0 +1,968 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "GestAgent API",
+    "description": "API para digitalización inteligente de documentos financieros. Automatiza el procesamiento de facturas, nóminas y documentos contables usando Inteligencia Artificial.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "GestAgent Support",
+      "email": "api@gestagent.com",
+      "url": "https://docs.gestagent.com"
+    },
+    "license": {
+      "name": "Proprietary",
+      "url": "https://gestagent.com/license"
+    },
+    "termsOfService": "https://gestagent.com/terms"
+  },
+  "servers": [
+    {
+      "url": "https://api.gestagent.com/v1",
+      "description": "Production server"
+    },
+    {
+      "url": "https://staging-api.gestagent.com/v1",
+      "description": "Staging server"
+    },
+    {
+      "url": "http://localhost:2200/api/v1",
+      "description": "Development server"
+    }
+  ],
+  "security": [
+    {
+      "ApiKeyAuth": []
+    },
+    {
+      "BearerAuth": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "API key para autenticación. Obténgalo desde el portal de desarrolladores."
+      },
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Token JWT para autenticación de usuario."
+      }
+    },
+    "schemas": {
+      "Document": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Identificador único del documento"
+          },
+          "document_type": {
+            "type": "string",
+            "enum": ["factura", "nomina", "extracto", "otros"],
+            "description": "Tipo de documento"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "processing", "completed", "error"],
+            "description": "Estado del procesamiento"
+          },
+          "processed_json": {
+            "type": "object",
+            "description": "Datos extraídos del documento mediante IA"
+          },
+          "upload_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Fecha y hora de subida"
+          },
+          "supplier_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "ID del proveedor asociado"
+          },
+          "customer_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "ID del cliente asociado"
+          },
+          "total_amount": {
+            "type": "number",
+            "format": "decimal",
+            "description": "Importe total del documento"
+          },
+          "tax_amount": {
+            "type": "number",
+            "format": "decimal",
+            "description": "Importe de impuestos"
+          }
+        },
+        "required": ["job_id", "document_type", "status", "upload_timestamp"]
+      },
+      "DocumentUpload": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "description": "Archivo PDF a procesar"
+          },
+          "document_type": {
+            "type": "string",
+            "enum": ["factura", "nomina", "extracto", "otros"],
+            "description": "Tipo de documento (opcional, se detecta automáticamente)"
+          },
+          "supplier_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "ID del proveedor (opcional, se detecta automáticamente)"
+          },
+          "customer_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "ID del cliente (opcional)"
+          }
+        },
+        "required": ["file"]
+      },
+      "Supplier": {
+        "type": "object",
+        "properties": {
+          "supplier_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Identificador único del proveedor"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre del proveedor"
+          },
+          "nif": {
+            "type": "string",
+            "description": "NIF/CIF del proveedor"
+          },
+          "commercial_name": {
+            "type": "string",
+            "description": "Nombre comercial"
+          },
+          "address": {
+            "type": "string",
+            "description": "Dirección del proveedor"
+          },
+          "contact_info": {
+            "type": "object",
+            "properties": {
+              "email": { "type": "string", "format": "email" },
+              "phone": { "type": "string" },
+              "website": { "type": "string", "format": "uri" }
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "inactive"],
+            "description": "Estado del proveedor"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["supplier_id", "name", "status"]
+      },
+      "Customer": {
+        "type": "object",
+        "properties": {
+          "customer_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Identificador único del cliente"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre del cliente"
+          },
+          "nif": {
+            "type": "string",
+            "description": "NIF/CIF del cliente"
+          },
+          "contact_info": {
+            "type": "object",
+            "properties": {
+              "email": { "type": "string", "format": "email" },
+              "phone": { "type": "string" },
+              "address": { "type": "string" }
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "inactive"],
+            "description": "Estado del cliente"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["customer_id", "name", "status"]
+      },
+      "ApiKey": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Identificador único de la API key"
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre descriptivo de la API key"
+          },
+          "key_prefix": {
+            "type": "string",
+            "description": "Prefijo visible de la API key"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Permisos de la API key"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "inactive", "revoked"],
+            "description": "Estado de la API key"
+          },
+          "rate_limit": {
+            "type": "integer",
+            "description": "Límite de requests por hora"
+          },
+          "usage_count": {
+            "type": "integer",
+            "description": "Número total de usos"
+          },
+          "last_used_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Último uso de la API key"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Fecha de expiración (opcional)"
+          }
+        },
+        "required": ["id", "name", "scopes", "status", "rate_limit"]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Tipo de error"
+          },
+          "message": {
+            "type": "string",
+            "description": "Descripción del error"
+          },
+          "details": {
+            "type": "object",
+            "description": "Información adicional del error"
+          }
+        },
+        "required": ["error", "message"]
+      },
+      "SuccessResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "data": {
+            "type": "object",
+            "description": "Datos de la respuesta"
+          },
+          "meta": {
+            "type": "object",
+            "properties": {
+              "total": { "type": "integer" },
+              "page": { "type": "integer" },
+              "limit": { "type": "integer" },
+              "hasMore": { "type": "boolean" }
+            }
+          }
+        },
+        "required": ["success", "data"]
+      }
+    },
+    "parameters": {
+      "limitParam": {
+        "name": "limit",
+        "in": "query",
+        "description": "Número máximo de elementos a devolver",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        }
+      },
+      "offsetParam": {
+        "name": "offset",
+        "in": "query",
+        "description": "Número de elementos a saltar",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      },
+      "statusParam": {
+        "name": "status",
+        "in": "query",
+        "description": "Filtrar por estado",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": ["pending", "processing", "completed", "error"]
+        }
+      }
+    },
+    "headers": {
+      "RateLimitHeaders": {
+        "X-RateLimit-Limit": {
+          "description": "Límite de requests por ventana de tiempo",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        "X-RateLimit-Remaining": {
+          "description": "Requests restantes en la ventana actual",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        "X-RateLimit-Reset": {
+          "description": "Timestamp cuando se resetea el límite",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/auth": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Autenticar usuario",
+        "description": "Obtiene un token JWT para acceso a APIs que requieren autenticación de usuario",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": { "type": "string" },
+                  "password": { "type": "string" }
+                },
+                "required": ["username", "password"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Autenticación exitosa",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/SuccessResponse" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "token": { "type": "string" },
+                            "user": {
+                              "type": "object",
+                              "properties": {
+                                "id": { "type": "string" },
+                                "username": { "type": "string" },
+                                "role": { "type": "string" }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciales inválidas",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit excedido",
+            "headers": {
+              "X-RateLimit-Limit": { "$ref": "#/components/headers/RateLimitHeaders/X-RateLimit-Limit" },
+              "X-RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitHeaders/X-RateLimit-Remaining" },
+              "X-RateLimit-Reset": { "$ref": "#/components/headers/RateLimitHeaders/X-RateLimit-Reset" }
+            }
+          }
+        }
+      }
+    },
+    "/documents": {
+      "get": {
+        "tags": ["Documents"],
+        "summary": "Listar documentos",
+        "description": "Obtiene una lista paginada de documentos procesados",
+        "security": [
+          { "ApiKeyAuth": [] },
+          { "BearerAuth": [] }
+        ],
+        "parameters": [
+          { "$ref": "#/components/parameters/limitParam" },
+          { "$ref": "#/components/parameters/offsetParam" },
+          { "$ref": "#/components/parameters/statusParam" },
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Filtrar por tipo de documento",
+            "schema": {
+              "type": "string",
+              "enum": ["factura", "nomina", "extracto", "otros"]
+            }
+          },
+          {
+            "name": "from_date",
+            "in": "query",
+            "description": "Fecha de inicio (ISO 8601)",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to_date",
+            "in": "query",
+            "description": "Fecha de fin (ISO 8601)",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de documentos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/SuccessResponse" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": { "$ref": "#/components/schemas/Document" }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {
+              "X-RateLimit-Remaining": { "$ref": "#/components/headers/RateLimitHeaders/X-RateLimit-Remaining" }
+            }
+          },
+          "401": {
+            "description": "No autorizado",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "403": {
+            "description": "Permisos insuficientes",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit excedido"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Documents"],
+        "summary": "Subir documento",
+        "description": "Sube un documento PDF para procesamiento con IA",
+        "security": [
+          { "ApiKeyAuth": [] },
+          { "BearerAuth": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentUpload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Documento subido exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/SuccessResponse" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "job_id": { "type": "string", "format": "uuid" },
+                            "status": { "type": "string", "enum": ["pending", "processing"] },
+                            "estimated_completion": { "type": "string", "format": "date-time" }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado"
+          },
+          "413": {
+            "description": "Archivo demasiado grande"
+          },
+          "415": {
+            "description": "Tipo de archivo no soportado"
+          },
+          "429": {
+            "description": "Rate limit excedido"
+          }
+        }
+      }
+    },
+    "/documents/{job_id}": {
+      "get": {
+        "tags": ["Documents"],
+        "summary": "Obtener documento",
+        "description": "Obtiene los detalles de un documento específico",
+        "security": [
+          { "ApiKeyAuth": [] },
+          { "BearerAuth": [] }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "description": "ID único del documento",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detalles del documento",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/SuccessResponse" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": { "$ref": "#/components/schemas/Document" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Documento no encontrado",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/suppliers": {
+      "get": {
+        "tags": ["Suppliers"],
+        "summary": "Listar proveedores",
+        "description": "Obtiene una lista paginada de proveedores",
+        "security": [
+          { "ApiKeyAuth": [] },
+          { "BearerAuth": [] }
+        ],
+        "parameters": [
+          { "$ref": "#/components/parameters/limitParam" },
+          { "$ref": "#/components/parameters/offsetParam" },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Buscar por nombre o NIF",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filtrar por estado",
+            "schema": {
+              "type": "string",
+              "enum": ["active", "inactive"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de proveedores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/SuccessResponse" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": { "$ref": "#/components/schemas/Supplier" }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Suppliers"],
+        "summary": "Crear proveedor",
+        "description": "Crea un nuevo proveedor en el sistema",
+        "security": [
+          { "ApiKeyAuth": [] },
+          { "BearerAuth": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "nif": { "type": "string" },
+                  "commercial_name": { "type": "string" },
+                  "address": { "type": "string" },
+                  "contact_info": {
+                    "type": "object",
+                    "properties": {
+                      "email": { "type": "string", "format": "email" },
+                      "phone": { "type": "string" },
+                      "website": { "type": "string", "format": "uri" }
+                    }
+                  }
+                },
+                "required": ["name", "nif"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Proveedor creado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/SuccessResponse" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": { "$ref": "#/components/schemas/Supplier" }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Datos inválidos"
+          },
+          "409": {
+            "description": "Proveedor ya existe"
+          }
+        }
+      }
+    },
+    "/customers": {
+      "get": {
+        "tags": ["Customers"],
+        "summary": "Listar clientes",
+        "description": "Obtiene una lista paginada de clientes",
+        "security": [
+          { "ApiKeyAuth": [] },
+          { "BearerAuth": [] }
+        ],
+        "parameters": [
+          { "$ref": "#/components/parameters/limitParam" },
+          { "$ref": "#/components/parameters/offsetParam" },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Buscar por nombre o NIF",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de clientes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/SuccessResponse" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": { "$ref": "#/components/schemas/Customer" }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stats": {
+      "get": {
+        "tags": ["Statistics"],
+        "summary": "Estadísticas del sistema",
+        "description": "Obtiene estadísticas generales del sistema y uso de APIs",
+        "security": [
+          { "ApiKeyAuth": [] },
+          { "BearerAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estadísticas del sistema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/SuccessResponse" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "totalDocuments": { "type": "integer" },
+                            "processedToday": { "type": "integer" },
+                            "activeSuppliers": { "type": "integer" },
+                            "activeCustomers": { "type": "integer" },
+                            "successRate": { "type": "string" },
+                            "avgProcessingTime": { "type": "number" }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/webhooks": {
+      "get": {
+        "tags": ["Webhooks"],
+        "summary": "Listar webhooks",
+        "description": "Obtiene la lista de webhooks configurados",
+        "security": [
+          { "ApiKeyAuth": [] },
+          { "BearerAuth": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de webhooks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/SuccessResponse" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "url": { "type": "string", "format": "uri" },
+                              "events": {
+                                "type": "array",
+                                "items": { "type": "string" }
+                              },
+                              "active": { "type": "boolean" },
+                              "created_at": { "type": "string", "format": "date-time" }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Webhooks"],
+        "summary": "Crear webhook",
+        "description": "Crea un nuevo webhook para recibir notificaciones de eventos",
+        "security": [
+          { "ApiKeyAuth": [] },
+          { "BearerAuth": [] }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": { 
+                    "type": "string", 
+                    "format": "uri",
+                    "description": "URL donde se enviarán las notificaciones"
+                  },
+                  "events": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": ["document.uploaded", "document.processed", "document.error", "supplier.created", "customer.created"]
+                    },
+                    "description": "Eventos que activarán el webhook"
+                  },
+                  "secret": {
+                    "type": "string",
+                    "description": "Secreto para verificar la firma del webhook (opcional)"
+                  }
+                },
+                "required": ["url", "events"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Webhook creado exitosamente"
+          },
+          "400": {
+            "description": "Datos inválidos"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Authentication",
+      "description": "Endpoints de autenticación"
+    },
+    {
+      "name": "Documents",
+      "description": "Gestión de documentos y procesamiento con IA"
+    },
+    {
+      "name": "Suppliers",
+      "description": "Gestión de proveedores"
+    },
+    {
+      "name": "Customers",
+      "description": "Gestión de clientes"
+    },
+    {
+      "name": "Statistics",
+      "description": "Estadísticas y métricas del sistema"
+    },
+    {
+      "name": "Webhooks",
+      "description": "Notificaciones mediante webhooks"
+    }
+  ],
+  "externalDocs": {
+    "description": "Documentación completa de GestAgent",
+    "url": "https://docs.gestagent.com"
+  }
+}
